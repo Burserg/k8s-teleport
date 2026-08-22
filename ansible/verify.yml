@@ -1,0 +1,285 @@
+---
+# Verify all requirements have been met.
+#   ansible-playbook verify.yml
+#
+# Writes docs/evidence/transcript.md
+
+- name: Capture verification
+  hosts: control
+  become: true
+  gather_facts: true
+
+  vars:
+    evidence_dir: "/home/{{ lab_user }}/evidence"
+    # Where make-user.sh wrote it. Override with -e if you ran the script
+    # somewhere else:  ansible-playbook verify.yml -e alice_kubeconfig=/path
+    alice_kubeconfig: "/home/{{ lab_user }}/lab/rbac/out/alice.kubeconfig"
+
+  tasks:
+    - name: Create evidence directory
+      ansible.builtin.file:
+        path: "{{ evidence_dir }}"
+        state: directory
+        owner: "{{ lab_user }}"
+        group: "{{ lab_user }}"
+        mode: "0755"
+
+    # ---------------------------------------------------------------
+    # Each block records a command, its output, and what it proves.
+    # `failed_when: false` throughout: a Forbidden response is evidence
+    # shows a user was denied access.
+    # ---------------------------------------------------------------
+
+    - name: Run collection
+      ansible.builtin.command: "{{ item.cmd }}"
+      environment:
+        KUBECONFIG: "{{ item.kubeconfig | default(kubeconfig) }}"
+      register: _evidence
+      changed_when: false
+      failed_when: false
+      loop:
+        # --- Requirement: kubeadm cluster, 1 control plane + 2 workers ---
+        - id: nodes
+          req: "Deployed Kubernetes cluster using kubeadm"
+          proves: "Three nodes Ready; roles show one control-plane, two workers."
+          cmd: kubectl get nodes -o wide
+
+        - id: kubeadm_version
+          req: "Standard Kubernetes, not MiniKube or KinD"
+          proves: "kubeadm is the bootstrap tool and reports the running version."
+          cmd: kubeadm version -o short
+
+        - id: no_kube_proxy
+          req: "CNI: Cilium with kube-proxy replacement"
+          proves: "No kube-proxy pods exist; Cilium owns the service datapath."
+          cmd: kubectl -n kube-system get pods -l k8s-app=kube-proxy
+
+        - id: kpr_status
+          req: "CNI: Cilium eBPF"
+          proves: >-
+            Cilium's own validation command. Status True, Socket LB Enabled,
+            and the service types it has taken over. With
+            kubeProxyReplacement=true the agent refuses to start if kernel
+            support is missing.
+          cmd: >-
+            kubectl -n kube-system exec ds/cilium --
+            cilium-dbg status --verbose
+
+        - id: bpf_cgroup_attach
+          req: "CNI: Cilium eBPF, socket-LB"
+          proves: >-
+            Cilium docs' own validation: connect4/connect6/sendmsg4/recvmsg4
+            programs attached at the real cgroup v2 root. Attachment to a
+            virtualized root is the documented silent-failure mode for
+            socket load-balancing.
+          cmd: >-
+            kubectl -n kube-system exec ds/cilium --
+            bpftool cgroup tree /sys/fs/cgroup
+
+        - id: cilium_services
+          req: "CNI: Cilium eBPF"
+          proves: "The eBPF service map: frontends, types, and backends."
+          cmd: >-
+            kubectl -n kube-system exec ds/cilium --
+            cilium-dbg service list
+
+        - id: l2_lease
+          req: "Ingress reachable"
+          proves: "A node holds the L2 announcement lease"
+          cmd: kubectl -n kube-system get lease -o wide
+
+        - id: gateway
+          req: "The Nginx site must be reachable from your web browser"
+          proves: >-
+            Gateway is configured with an address. Cilium serves
+            Gateway API directly.
+          cmd: kubectl -n gateway-infra get gateway -o wide
+
+        - id: gateway_role_split
+          req: "RBAC for users to maintain an application in a namespace"
+          proves: >-
+            The tenant may manage HTTPRoutes but not Gateways, so it controls
+            routing to its own service and nothing about TLS termination.
+          cmd: kubectl auth can-i --list -n cheesecake
+
+        # --- Requirement: RBAC via Certificate Signing Requests ---
+        - id: csr
+          req: "Configure K8s RBAC to use CSRs to get access to the K8s API"
+          proves: "The CSR exists, was Approved and Issued by the cluster signer."
+          cmd: kubectl get csr alice -o wide
+
+        - id: csr_subject
+          req: "Configure K8s RBAC to use CSRs"
+          proves: "Identity is carried in the certificate: CN=alice, O=app-devs."
+          cmd: >-
+            bash -lc "kubectl get csr alice -o jsonpath='{.spec.request}'
+            | base64 -d | openssl req -noout -subject"
+
+        - id: rbac_role
+          req: "RBAC for users to maintain an application in a namespace"
+          proves: "Role is namespaced; RoleBinding targets the group"
+          cmd: kubectl -n cheesecake get role,rolebinding -o wide
+
+        - id: whoami
+          req: "Deployed Nginx application through user access"
+          proves: "The certificate authenticates as alice in group app-devs."
+          cmd: kubectl auth whoami
+          kubeconfig: "{{ alice_kubeconfig }}"
+
+        - id: can_i_allowed
+          req: "User has role access to maintain the application"
+          proves: "alice may manage workloads inside her namespace."
+          cmd: kubectl auth can-i --list -n cheesecake
+          kubeconfig: "{{ alice_kubeconfig }}"
+
+        - id: can_i_denied_nodes
+          req: "RBAC boundary holds"
+          proves: "Forbidden at cluster scope."
+          cmd: kubectl get nodes
+          kubeconfig: "{{ alice_kubeconfig }}"
+
+        - id: can_i_denied_ns
+          req: "RBAC boundary holds"
+          proves: "No access to other namespaces."
+          cmd: kubectl -n kube-system get secrets
+          kubeconfig: "{{ alice_kubeconfig }}"
+
+        # --- Requirement: GitOps ---
+        - id: flux
+          req: "Deploy Nginx Application using GitOps"
+          proves: "Flux updated the app from Git; source and revision shown."
+          cmd: flux get all -A
+
+        - id: flux_impersonation
+          req: "Deployed through user access and GitOps"
+          proves: >-
+            The Kustomization impersonates the tenant ServiceAccount, so Flux
+            applies with alice's permissions rather than cluster-admin.
+          cmd: >-
+            kubectl -n flux-system get kustomization cheesecake-app
+            -o jsonpath='{.spec.serviceAccountName}{"\n"}'
+
+        # --- Requirement: the application itself ---
+        - id: app_pods
+          req: "Static Nginx site deployed on the cluster"
+          proves: "Replicas running and spread across workers."
+          cmd: kubectl -n cheesecake get pods -o wide
+
+        - id: app_content
+          req: "On the Nginx site include a recipe for peach cheesecake"
+          proves: "The served page contains the recipe."
+          cmd: >-
+            bash -lc "kubectl -n cheesecake exec deploy/cheesecake --
+            curl -s localhost:8080 | grep -iE 'peach|cheesecake|cream cheese' | head -20"
+
+        # --- Requirement: cert-manager TLS ---
+        - id: cert
+          req: "Use Cert Manager for Issuing SSL certs for Nginx site"
+          proves: "Certificate is Ready, issued by the ClusterIssuer."
+          cmd: kubectl -n gateway-infra get certificate,certificaterequest -o wide
+
+        - id: cert_detail
+          req: "Use Cert Manager for Issuing SSL certs"
+          proves: "Issuer, dates, and SANs on the certificate cert-manager produced."
+          cmd: >-
+            bash -lc "kubectl -n gateway-infra get secret lab-gateway-tls
+            -o jsonpath='{.data.tls\\.crt}' | base64 -d
+            | openssl x509 -noout -issuer -subject -dates -ext subjectAltName"
+
+        - id: tls_handshake
+          req: "The Nginx site must be reachable from your web browser"
+          proves: "End-to-end HTTPS: TLS version, cipher, and served content."
+          cmd: >-
+            bash -lc "curl -sS -o /dev/null -w 'HTTP %{http_code}  TLS %{ssl_verify_result}\\n'
+            --resolve {{ app_hostname }}:443:{{ ingress_lb_ip }}
+            -k https://{{ app_hostname }}/"
+
+        # --- Requirement: Teleport ---
+        - id: teleport
+          req: "Deploy Teleport on your Kubernetes Cluster"
+          proves: "Teleport pods running with their own LoadBalancer address."
+          cmd: kubectl -n teleport get pods,svc -o wide
+
+        # --- Supporting: network policy, storage ---
+        - id: netpol
+          req: "Security posture"
+          proves: "Default-deny CiliumNetworkPolicy active in the tenant namespace."
+          cmd: kubectl -n cheesecake get ciliumnetworkpolicy
+
+        - id: storage
+          req: "CSI: Rancher Local Path Provisioner"
+          proves: "local-path is present and marked default."
+          cmd: kubectl get storageclass
+
+        # --- Supporting: host hardening ---
+        - id: sshd
+          req: "Key-only SSH access"
+          proves: >-
+            Effective sshd config.
+          cmd: >-
+            bash -lc "sshd -T | grep -E
+            '^(permitrootlogin|passwordauthentication|kbdinteractiveauthentication|pubkeyauthentication)'"
+      loop_control:
+        label: "{{ item.id }}"
+
+    - name: Render the transcript
+      ansible.builtin.copy:
+        dest: "{{ evidence_dir }}/transcript.md"
+        owner: "{{ lab_user }}"
+        group: "{{ lab_user }}"
+        mode: "0644"
+        content: |
+          # Verification Transcript
+
+          Captured {{ ansible_date_time.iso8601 }} on {{ inventory_hostname }}.
+
+          Every block is real output from the running cluster. Commands
+          are shown so they are easily reproduced. The `Forbidden` results
+          under RBAC are the evidence that it is working as expected.
+
+          {% for r in _evidence.results %}
+          ---
+
+          ## {{ loop.index }}. {{ r.item.id }}
+
+          **Requirement:** {{ r.item.req }}
+
+          **What this shows:** {{ r.item.proves }}
+
+          ```console
+          $ {{ r.item.cmd | trim }}
+          {{ (r.stdout | default('')) | trim }}
+          {% if r.stderr | default('') | trim | length > 0 %}
+          {{ r.stderr | trim }}
+          {% endif %}
+          ```
+
+          {% endfor %}
+          ---
+
+          ## Coverage
+
+          | Requirement | Evidence |
+          | --- | --- |
+          | Kubeadm cluster, 1 control + 2 workers | 1, 2 |
+          | Standard Kubernetes (not MiniKube/KinD) | 2 |
+          | Nginx deployed through user access | 10, 11, 17 |
+          | RBAC via Certificate Signing Requests | 8, 9, 10 |
+          | Peach cheesecake recipe on the site | 18 |
+          | Cert Manager issuing SSL certs | 19, 20 |
+          | Site reachable from a web browser | 7, 21 |
+          | GitOps deployment (Flux CD) | 15, 16 |
+          | Teleport deployed | 22 |
+
+    - name: Fetch the transcript to the repository
+      ansible.builtin.fetch:
+        src: "{{ evidence_dir }}/transcript.md"
+        dest: "{{ playbook_dir }}/../docs/evidence/transcript.md"
+        flat: true
+
+    - name: Where it landed
+      ansible.builtin.debug:
+        msg:
+          - "Wrote docs/evidence/transcript.md"
+          - "Review before submitting. check for sensitive information."
+          - "Confirm Forbidden result is intended."

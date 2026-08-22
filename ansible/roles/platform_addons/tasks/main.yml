@@ -1,0 +1,141 @@
+# Everything here runs against the control plane with the admin kubeconfig.
+# These are cluster-wide platform components.
+
+- name: Add Helm repositories
+  kubernetes.core.helm_repository:
+    name: "{{ item.name }}"
+    repo_url: "{{ item.url }}"
+  loop:
+    - { name: jetstack, url: "https://charts.jetstack.io" }
+    - { name: teleport, url: "https://charts.releases.teleport.dev" }
+  become_user: "{{ lab_user }}"
+
+- name: Install local-path-provisioner
+  kubernetes.core.k8s:
+    src: "{{ local_path_manifest }}"
+    state: present
+    kubeconfig: "{{ kubeconfig }}"
+  become_user: "{{ lab_user }}"
+
+- name: Make local-path the default StorageClass
+  kubernetes.core.k8s:
+    kubeconfig: "{{ kubeconfig }}"
+    state: patched
+    kind: StorageClass
+    name: local-path
+    definition:
+      metadata:
+        annotations:
+          storageclass.kubernetes.io/is-default-class: "true"
+  become_user: "{{ lab_user }}"
+
+# Cilium as LB
+
+- name: Configure Cilium LB and L2 announcements
+  kubernetes.core.k8s:
+    definition: "{{ lookup('template', 'cilium-lb.yaml.j2') | from_yaml_all | list }}"
+    state: present
+    kubeconfig: "{{ kubeconfig }}"
+  become_user: "{{ lab_user }}"
+  when: network_profile == "l2"
+
+# Cert Manager
+
+- name: Install cert-manager
+  kubernetes.core.helm:
+    name: cert-manager
+    chart_ref: jetstack/cert-manager
+    chart_version: "{{ cert_manager_version }}"
+    release_namespace: cert-manager
+    create_namespace: true
+    kubeconfig: "{{ kubeconfig }}"
+    wait: true
+    values:
+      crds:
+        enabled: true
+      config:
+        apiVersion: controller.config.cert-manager.io/v1alpha1
+        kind: ControllerConfiguration
+        gatewayAPI:
+          enabled: true
+  become_user: "{{ lab_user }}"
+
+- name: Create  DNS provider creds for DNS-01
+  kubernetes.core.k8s:
+    kubeconfig: "{{ kubeconfig }}"
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: cloudflare-api-token
+        namespace: cert-manager
+      stringData:
+        api-token: "{{ cloudflare_api_token }}"
+  become_user: "{{ lab_user }}"
+  no_log: true
+  when: cloudflare_api_token | length > 0
+
+- name: Create ClusterIssuers
+  kubernetes.core.k8s:
+    definition: "{{ lookup('template', 'cluster-issuers.yaml.j2') | from_yaml_all | list }}"
+    state: present
+    kubeconfig: "{{ kubeconfig }}"
+  become_user: "{{ lab_user }}"
+
+# Cilium as Gateway
+
+- name: Create the Gateway namespace
+  kubernetes.core.k8s:
+    kubeconfig: "{{ kubeconfig }}"
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ gateway_namespace }}"
+  become_user: "{{ lab_user }}"
+
+- name: Create the Gateway and its certificate
+  kubernetes.core.k8s:
+    definition: "{{ lookup('template', 'gateway.yaml.j2') | from_yaml_all | list }}"
+    state: present
+    kubeconfig: "{{ kubeconfig }}"
+  become_user: "{{ lab_user }}"
+
+- name: Wait for the Gateway address to come up
+  ansible.builtin.command: >-
+    kubectl -n {{ gateway_namespace }} wait gateway/{{ gateway_name }}
+    --for=condition=Programmed --timeout=180s
+  environment:
+    KUBECONFIG: "{{ kubeconfig }}"
+  become_user: "{{ lab_user }}"
+  changed_when: false
+
+# Flux
+
+- name: Install the Flux CLI
+  ansible.builtin.shell: |
+    set -o pipefail
+    curl -s https://fluxcd.io/install.sh | bash
+  args:
+    executable: /bin/bash
+    creates: /usr/local/bin/flux
+
+- name: Install Flux controllers
+  ansible.builtin.command: flux install --components-extra=image-reflector-controller,image-automation-controller
+  environment:
+    KUBECONFIG: "{{ kubeconfig }}"
+  become_user: "{{ lab_user }}"
+  args:
+    creates: /home/{{ lab_user }}/.flux-installed
+  changed_when: true
+
+- name: Mark Flux as installed
+  ansible.builtin.file:
+    path: "/home/{{ lab_user }}/.flux-installed"
+    state: touch
+    owner: "{{ lab_user }}"
+    group: "{{ lab_user }}"
+    mode: "0644"
+  changed_when: false

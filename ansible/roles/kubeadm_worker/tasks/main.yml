@@ -1,0 +1,31 @@
+---
+- name: Check if node has already joined cluster
+  ansible.builtin.stat:
+    path: /etc/kubernetes/kubelet.conf
+  register: _kubelet_conf
+
+- name: Join the cluster
+  ansible.builtin.command: >-
+    {{ hostvars[groups['control'][0]]['kubeadm_join_command'] }}
+    --node-name {{ inventory_hostname }}
+  when: not _kubelet_conf.stat.exists
+  changed_when: true
+
+- name: Label the node as a worker
+  ansible.builtin.command: >-
+    kubectl label node {{ inventory_hostname }}
+    node-role.kubernetes.io/worker=worker --overwrite
+  delegate_to: "{{ groups['control'][0] }}"
+  become_user: "{{ lab_user }}"
+  environment:
+    KUBECONFIG: "/home/{{ lab_user }}/.kube/config"
+  changed_when: true
+
+- name: Wait for the node to become Ready
+  ansible.builtin.command: >-
+    kubectl wait --for=condition=Ready node/{{ inventory_hostname }} --timeout=300s
+  delegate_to: "{{ groups['control'][0] }}"
+  become_user: "{{ lab_user }}"
+  environment:
+    KUBECONFIG: "/home/{{ lab_user }}/.kube/config"
+  changed_when: false

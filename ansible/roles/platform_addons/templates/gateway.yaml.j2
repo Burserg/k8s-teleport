@@ -1,0 +1,74 @@
+# {{ ansible_managed }}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ gateway_name }}-tls
+  namespace: {{ gateway_namespace }}
+spec:
+  secretName: {{ gateway_name }}-tls
+  issuerRef:
+    name: letsencrypt-staging
+    kind: ClusterIssuer
+  dnsNames:
+    - {{ app_hostname }}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: {{ gateway_name }}
+  namespace: {{ gateway_namespace }}
+spec:
+  gatewayClassName: cilium
+{% if network_profile == "l2" %}
+  # Cilium creates a LoadBalancer Service for this Gateway. The address is
+  # allocated by Cilium LB IPAM.
+  addresses:
+    - type: IPAddress
+      value: "{{ ingress_lb_ip }}"
+{% endif %}
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+      # Present only to redirect.
+      allowedRoutes:
+        namespaces:
+          from: Same
+
+    - name: https
+      protocol: HTTPS
+      port: 443
+      hostname: "{{ app_hostname }}"
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - kind: Secret
+            name: {{ gateway_name }}-tls
+      allowedRoutes:
+        # Tenants may attach routes, but only from namespaces explicitly
+        # labelled as tenants.
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              gateway-access: "true"
+        kinds:
+          - kind: HTTPRoute
+---
+# Force HTTPS. Owned by the platform, so a tenant cannot disable it.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: https-redirect
+  namespace: {{ gateway_namespace }}
+spec:
+  parentRefs:
+    - name: {{ gateway_name }}
+      sectionName: http
+  rules:
+    - filters:
+        - type: RequestRedirect
+          requestRedirect:
+            scheme: https
+            statusCode: 301

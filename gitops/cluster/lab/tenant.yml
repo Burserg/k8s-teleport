@@ -1,0 +1,30 @@
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: cheesecake-app
+  namespace: flux-system
+spec:
+  interval: 1m
+  url: https://github.com/burserg/k8s-teleport
+  ref:
+    branch: main
+
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: cheesecake-app
+  namespace: flux-system
+spec:
+  interval: 5m
+  path: ./gitops/apps/cheesecake
+  prune: true
+  wait: true
+  timeout: 3m
+  sourceRef:
+    kind: GitRepository
+    name: cheesecake-app
+  targetNamespace: cheesecake
+  # Impersonation. Flux drops to exactly the tenant's permissions.
+  serviceAccountName: app-deployer

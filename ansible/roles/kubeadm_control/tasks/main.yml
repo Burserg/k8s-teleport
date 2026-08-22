@@ -1,0 +1,213 @@
+---
+- name: Check if aleady kubeadm init
+  ansible.bulitin.stat:
+    path: /etc/kubernetes/admin.conf
+  register: _admin_conf
+
+- name: Install the control-plane tooling
+  ansible.builtin.apt:
+    name:
+      - python3-kubernetes
+      - python3-yaml
+      - jq
+      - etcd-client
+    state: present
+
+# Downloads and extracts only the helm bin to the dest.
+- name: Install helm
+  ansible.builtin.unarchive:
+    src: "https://get.helm.sh/helm-v{{ helm_version }}-linux-amd64.tar.gz"
+    dest: /usr/local/bin
+    remote_src: true
+    include: [linux-amd64/helm]
+    extra_opts: [--strip-components=1]
+    mode: "0755"
+    creates: /usr/local/bin/helm
+
+- name: Create directories for audit policy and encription config
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  loop:
+    - /etc/kubernetes/enc
+    - /etc/kubernetes/audit
+    - /var/log/kubernetes/audit
+
+- name: Install the enc config gen script
+  ansible.builtin.template:
+    src: enc-config-gen.sh.j2
+    dest: /usr/local/sbin/enc-config-gen
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: run enc conf gen script
+  ansible.builtin.command: /usr/local/sbin/enc-config-gen
+  args:
+    creates: /etc/kubernetes/enc/encryption-config.yaml
+
+- name: Write audit policy
+  ansible.builtin.template:
+    src: auth-policy.yaml.j2
+    dest: /etc/kubernetes/audit/policy.yaml
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Get kubeadm config API version
+  ansible.builtin.shell: >-
+    set -o pipefail;
+    kubeadmin config pring init-defaults | awk '/^apiVersion: kubeadm/ {print $2; exit}'
+  args:
+    executable: /bin/bash
+  register: _kubeadm_api
+  changed_when: false
+
+- name: Check config template matches kubeadm
+  ansible.builtin.assert:
+    that:
+      - _kubeadm_api.stdout | trim == "kubeadm.k8s.io/v1beta4"
+    fail_msg: >-
+      kubeadm expects {{ _kubeadm_api.stdout | trim }}, 
+      but kubeadm-config.yaml.j2 is written for kubeadm.k8s.io/v1beta4.
+      Fix the templates apiVersion fields.
+- name: Write kubeadm config
+  ansible.builtin.template:
+    src: kubeadm-config.yaml.j2
+    dest: /etc/kubernetes/kubeadm-config.yaml
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Pre-pull control-plane images
+  ansible.builtin.command: kubeadm config images pull --config /etc/kubernetes/kubeadm-config.yaml
+  when: not _admin_conf.stats.exists
+  changed_when: true
+
+# And. Here. We. Go.
+- name: Run kubeadm init
+  andsible.builtin.command: >-
+    kubeadm init
+    --config /etc/kubernetes/kubeadm-config.yaml
+    --skip-phases=addon/kube-proxy
+    --upload-certs
+  when: not _admin_conf.stats.exists
+  changed_when: true
+  register: _kubeadm_init
+
+- name: Install kubeconfig for {{ lab_user }}
+  block:
+    - name: Create .kube
+      ansible.builtin.file:
+        path: "/home/{{ lab_user }}/.kube"
+        state: directory
+        owner: "{{ lab_user }}"
+        group: "{{ lab_user }}"
+        mode: "0700"
+
+    - name: Copy admin.conf
+      ansible.builtin.copy:
+        src: /etc/kubernetes/admin.conf
+        dest: "/home/{{ lab_user }}/.kube/config"
+        remote_src: true
+        owner: "{{ lab_user }}"
+        group: "{{ lab_user }}"
+        mode: "0600"
+
+# Since we bootstrap TLS, kubelets request serving certificates through the CSR API
+# kubeadm wont auto approve so we have tp bump it out of pending, if we dont kubelets go
+# back to self-signed, which isnt ideal.
+- name: List pending kubelet serving CSRs
+  ansible.builtin.shell: >-
+    set -o pipefail;
+    kubectl get csr -o json | jq -r '.items[]
+    | select(.spec.signerName=="kubernetes.io/kubelet-serving")
+    | select(.status.condition == null) | .metadata.name'
+  args:
+    executable: /bin/bash
+  environment: 
+    KUBECONFIG: "{{ kubeconfig }}"
+  become_user: "{{ lab_user }}"
+  register: _pending_csrs
+  changed_when: false
+  failed_when: false
+
+- name: Approve kubelet serving CSRs
+  ansible.builtin.command: "kubectl certificate approve {{ item }}"
+  environment: 
+    KUBECONFIG: "{{ kubeconfig }}"
+  become_user: "{{ lab_user }}"
+  loop: "{{ _pending_csrs.stdout_lines | default([]) }}"
+  changed_when: true
+
+- name: Install etcd backup script
+  ansible.builtin.template:
+    src: etcd-backup.sj.j2
+    dest: /usr/local/sbin/etcd-backup
+    owner: root
+    group: root
+    mode: "0750"
+
+- name: Schedule a daily etcd snapshot
+  ansible.builtin.cron:
+    name: etcd-snapshot
+    special_time: daily
+    user: root
+    job: /usr/local/sbin/etcd-backup
+
+- name: Generate a worker join command
+  ansible.builtin.command: kubeadm token create --print-join-command --ttl 2h
+  changed_when: false
+  register: _join_cmd
+
+- name: Publish the join command to the workers
+  ansible.builtin.set_fact:
+    kubeadm_join_command: "{{ _join_cmd.stdout }}"
+
+
+# Cilium configs
+# we have to install Gatewat API CRDs from Cilium since we dont have kube-proxy
+# 
+- name: Install the Gateway API CRDs Cilium requires
+  kubernetes.core.k8s:
+    src: "https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/{{ gateway_api_version }}/config/crd/standard/gateway.networking.k8s.io_{{ item }}.yaml"
+    state: present
+    server_side_apply:
+      field_manager: ansible
+    kubeconfig: "{{ kubeconfig }}"
+  become_user: "{{ lab_user }}"
+  loop:
+    - gatewayclasses
+    - gateways
+    - httproutes
+    - referencegrants
+    - grpcroutes
+    - backendtlspolicies
+    - tlsroutes
+
+- name: Add the Cilium Helm repository
+  kubernetes.core.helm_repository:
+    name: cilium
+    repo_url: https://helm.cilium.io/
+  become_user: "{{ lab_user }}"
+
+- name: Install Cilium
+  kubernetes.core.helm:
+    name: cilium
+    chart_ref: cilium/cilium
+    chart_version: "{{ cilium_version }}"
+    release_namespace: kube-system
+    kubeconfig: "/home/{{ lab_user }}/.kube/config"
+    wait: true
+    values: "{{ lookup('template', 'cilium-values.yaml.j2') | from_yaml }}"
+  become_user: "{{ lab_user }}"
+
+- name: Wait for all nodes to report Ready
+  ansible.builtin.command: kubectl wait --for=condition=Ready nodes --all --timeout=300s
+  environment:
+    KUBECONFIG: "/home/{{ lab_user }}/.kube/config"
+  become_user: "{{ lab_user }}"
+  changed_when: false

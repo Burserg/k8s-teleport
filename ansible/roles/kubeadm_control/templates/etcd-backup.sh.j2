@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# {{ ansible_managed }}
+# Snapshot etcd, VERIFY the snapshot, and archive the secrets-encryption
+# config to /var/backups/etcd. The encryption config MUST travel with the
+# snapshot: a restore without /etc/kubernetes/enc cannot decrypt any Secret
+# written after encryption was enabled.
+#
+# Tool split, per etcd v3.6+ (docs: op-guide/recovery): SAVE is an online
+# operation over the client API and belongs to etcdctl - the only tool that
+# can do it. STATUS and RESTORE are offline operations on the db file and
+# belong to etcdutl; their etcdctl variants were removed in v3.6.
+#
+# Restore (offline, on a stopped control plane), for the operator who finds
+# this script at 2am:
+#   systemctl stop kubelet && crictl stop <etcd container>   # stop writers
+#   etcdutl snapshot restore /var/backups/etcd/etcd-<TS>.db \
+#     --data-dir /var/lib/etcd-restored
+#   tar xzf /var/backups/etcd/enc-<TS>.tar.gz -C /etc/kubernetes
+#   # point etcd's static pod hostPath at the restored dir, start kubelet
+set -euo pipefail
+
+for bin in etcdctl etcdutl; do
+  command -v "${bin}" >/dev/null || {
+    echo "missing ${bin}; install the etcd-client package" >&2; exit 1; }
+done
+
+TS=$(date +%Y%m%d-%H%M%S)
+DIR=/var/backups/etcd
+mkdir -p "$DIR"
+
+SNAP="$DIR/etcd-$TS.db"
+ETCDCTL_API=3 etcdctl snapshot save "$SNAP" \
+  --endpoints=https://127.0.0.1:2379 \
+  --cacert=/etc/kubernetes/pki/etcd/ca.crt \
+  --cert=/etc/kubernetes/pki/etcd/server.crt \
+  --key=/etc/kubernetes/pki/etcd/server.key
+
+# Verify BEFORE pruning older snapshots: etcdutl checks the integrity hash
+# that etcdctl embedded at save time. A snapshot that fails here aborts the
+# script (set -e), so a bad snapshot can never displace good ones.
+etcdutl snapshot status "$SNAP" --write-out=table
+
+tar czf "$DIR/enc-$TS.tar.gz" -C /etc/kubernetes enc
+
+# Keep the last 7 of each - only reached when save AND verify succeeded.
+ls -1t "$DIR"/etcd-*.db  2>/dev/null | tail -n +8 | xargs -r rm --
+ls -1t "$DIR"/enc-*.tar.gz 2>/dev/null | tail -n +8 | xargs -r rm --

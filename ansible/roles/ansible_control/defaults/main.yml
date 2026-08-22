@@ -1,0 +1,5 @@
+---
+control_self_hosting: true
+control_key_type: ed25519
+control_key_path: "/home/{{ lab_user }}/.ssh/id_ed25519"
+control_workdir: "/home/{{ lab_user }}/lab"   # on the bastion

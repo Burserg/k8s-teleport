@@ -1,0 +1,3 @@
+---
+ssh_disable_password_auth: true
+ssh_permit_root_login: false

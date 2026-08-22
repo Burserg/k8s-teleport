@@ -1,0 +1,109 @@
+# {{ ansible_managed }}
+apiVersion: kubeadm.k8s.io/v1beta4
+kind: InitConfiguration
+localAPIEndpoint:
+  advertiseAddress: {{ cluster_ip }}
+  bindPort: 6443
+nodeRegistration:
+  criSocket: unix:///var/run/containerd/containerd.sock
+  kubeletExtraArgs:
+    - name: node-ip
+      value: {{ cluster_ip }}
+---
+apiVersion: kubeadm.k8s.io/v1beta4
+kind: ClusterConfiguration
+kubernetesVersion: v{{ k8s_version }}
+controlPlaneEndpoint: "{{ control_plane_endpoint }}:6443"
+networking:
+  podSubnet: {{ pod_subnet }}
+  serviceSubnet: {{ service_subnet }}
+
+apiServer:
+  certSANs:
+{% for san in api_cert_sans %}
+    - {{ san }}
+{% endfor %}
+  extraArgs:
+    # Secrets encryption at rest 
+    - name: encryption-provider-config
+      value: /etc/kubernetes/enc/encryption-config.yaml
+
+    # Audit logging 
+    - name: audit-policy-file
+      value: /etc/kubernetes/audit/policy.yaml
+    - name: audit-log-path
+      value: /var/log/kubernetes/audit/audit.log
+    - name: audit-log-maxage
+      value: "30"
+    - name: audit-log-maxbackup
+      value: "10"
+    - name: audit-log-maxsize
+      value: "100"
+
+    # Transport 
+    - name: tls-min-version
+      value: VersionTLS12
+
+    # Anonymous requests are rejected rather than relying on RBAC
+    - name: anonymous-auth
+      value: "false"
+
+  extraVolumes:
+    - name: encryption-config
+      hostPath: /etc/kubernetes/enc
+      mountPath: /etc/kubernetes/enc
+      readOnly: true
+      pathType: DirectoryOrCreate
+    - name: audit-policy
+      hostPath: /etc/kubernetes/audit
+      mountPath: /etc/kubernetes/audit
+      readOnly: true
+      pathType: DirectoryOrCreate
+    - name: audit-log
+      hostPath: /var/log/kubernetes/audit
+      mountPath: /var/log/kubernetes/audit
+      readOnly: false
+      pathType: DirectoryOrCreate
+
+etcd:
+  local:
+    extraArgs:
+      # Tuned for the control plane's disk. etcd fsyncs before acknowledging
+      # every write; the defaults (100ms heartbeat, 1000ms election) assume
+      # low-latency storage.We are not on low-latency storage so 10x values.
+      - name: heartbeat-interval
+        value: "{{ etcd_heartbeat_interval }}"
+      - name: election-timeout
+        value: "{{ etcd_election_timeout }}"
+      # Default is 2 GiB. Hitting it puts the cluster into maintenance mode
+      # with no warning beforehand.
+      - name: quota-backend-bytes
+        value: "8589934592"
+---
+apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
+cgroupDriver: systemd
+
+# Kubelet requests a serving certificate through the CSR API rather than
+# self-signing. Those CSRs need approval.
+serverTLSBootstrap: true
+rotateCertificates: true
+
+# Every pod gets RuntimeDefault seccomp unless it explicitly opts out
+seccompDefault: true
+
+# Kubelet refuses to start rather than silently overwriting kernel tunables
+# it disagrees with. Requires the sysctls set by the container_runtime role;
+# without them kubelet will not come up.
+protectKernelDefaults: true
+
+authentication:
+  anonymous:
+    enabled: false
+  webhook:
+    enabled: true
+authorization:
+  mode: Webhook
+
+readOnlyPort: 0
+streamingConnectionIdleTimeout: 5m

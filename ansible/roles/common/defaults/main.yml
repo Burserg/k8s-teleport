@@ -1,0 +1,4 @@
+---
+manage_etc_hosts: true
+lab_domain: lab.local
+common_packages_extra: []

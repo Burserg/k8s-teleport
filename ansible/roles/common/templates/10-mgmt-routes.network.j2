@@ -1,0 +1,13 @@
+# {{ ansible_managed }}
+
+[Match]
+Name= {{ mgmt_interface }}
+
+[Network]
+Address={{ mgmt_ip }}/{{ mgmt_subnet_prefix}}
+{% for r in mgmt_static_routes %}
+
+[Route]
+Destination={{ r.destination }}
+Gateway={{ r.gateway }}
+{% endfor %}

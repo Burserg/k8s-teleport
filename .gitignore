@@ -1,0 +1,8 @@
+*.tfstate
+*.tfstate.*
+*.tfplan
+terraform.tfvars
+.terraform/
+.terraform.lock.hcl
+ansible/inventory/hosts.ini
+*.retry

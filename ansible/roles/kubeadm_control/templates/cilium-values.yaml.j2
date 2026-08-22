@@ -1,0 +1,53 @@
+# {{ ansible_managed }}
+# Helm values for Cilium
+kubeProxyReplacement: true
+cgroup:
+    autoMount:
+        enabled: false
+    hostRoot: /sys/fs/cgroup
+k8sServiceHost: "{{ cluster_ip }}"
+k8sServicePort: 6443
+# Keep Cilium on the cluster interface
+devices: "{{ cluster_interface }}"
+ipam:
+  mode: kubernetes
+{% if network_profile == "l2" %
+# Nodes share one L2 segment, so pod traffic routes natively: no VXLAN
+# overhead, full 1500 MTU. REQUIRES L2 adjacency.
+routingMode: native
+ipv4NativeRoutingCIDR: "{{ pod_subnet }}"
+autoDirectNodeRoutes: true
+{% else %}
+# Cloud VPCs are not real L2 segments, no gratuitous ARP
+# so we use Tunnel mode
+routingMode: tunnel
+tunnelProtocol: vxlan
+{% endif %}
+bfp:
+  masquerade: true
+{% if network_profile == "l2" %}
+l2announcements:
+  enabled: true
+externalIPs:
+  enabled: true
+{% endif %}
+k8sClientRateLimit:
+  qps: {{ cilium_client_qps }}
+  burst: {{ cilium_client_burst }}
+encryption:
+  enabled: {{ cilium_wireguard | lower }}
+  type: wireguard
+# Gateway API replaces ingress-nginx
+# Cilium takes it place with an Envoy data plane.
+gatewayAPI:
+  enabled: true
+{% if network_profile == "hostnetwork" %}
+  # Replaces the LB VIP on clouds: Envoy binds the Gateway listeners in the
+  # host network namespace; DNS points at a node address.
+  hostNetwork:
+    enabled: true
+{% endif %}
+hubble:
+  enabled: true
+  relay:
+    enabled: true

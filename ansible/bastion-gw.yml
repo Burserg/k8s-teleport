@@ -1,0 +1,76 @@
+---
+# Makes the jump host the cluster NAT gateway.
+# Run this before preflight if cluster VLAN isnt working
+# or if there is no direct uplink.
+# TODO: Template this so that it can be used by others.
+
+- name: Configure the bastion/jump host as the cluster NAT gateway
+  hosts: jump
+  become: true
+  vars:
+    cluster_cidr_v4: "10.75.30.0/24"
+  tasks:
+    - name: Identify the mgmt interface
+      ansible.builtin.set_facts:
+        _uplink: "{{ item }}"
+      loop: "{{ ansible_facts['interface'] }}"
+      when:
+        - ansible_facts[item] is defined
+        - ansible_facts[item].ipv4 is defined
+        - ansible_facts[item].ipv4.address | default('') is match('^10\.0\.180\.')
+      
+    - name: Fail if no mgmt interface found
+      ansible.builtin.fail:
+        msg: No mgmt interface with 10.0.180.x; cannot NAT.
+      when: _uplink is not defined
+  
+    - name: Enable IPv4 forwarding
+      ansible.posix.sysctl:
+        name: net.ipv4.ip_forward
+        value: "1"
+        sysctl_file: /etc/sysctl.d/98-bastion-gw.conf
+        reload: true
+    
+    - name: Install nftables
+      ansible.builtin.apt:
+        name: nftables
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+  
+    - name: Write the NAT ruleset
+      ansible.builtin.copy:
+        dest: /etc/nftables.conf
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          #!/usr/sbin/nft -f
+          # Managed by ansible/bastion-gw.yml
+          flush ruleset
+          table inet bastion_gw {
+            chain forward {
+              type filter hook forward priority 0; policy drop;
+              ct state established,related accept
+              ip saddr {{ cluster_cidr_v4 }} accept
+              # Return traffic to the announced LB VIPs (they live in the
+              # cluster CIDR, so the rule above already covers outbound).
+            }
+            chain postrouting {
+              type nat hook postrouting priority srcnat; policy accept;
+              ip saddr {{ cluster_cidr_v4 }} oifname "{{ _uplink }}" masquerade
+            }
+          }
+        notify: Reload nftables
+    - name: Enable nftables at boot
+      ansible.builtin.systemd:
+        name: nftables
+        enabled: true
+        state: started
+  
+  handlers:
+    - name: Reload nftables
+      ansible.builtin.systemd:
+        name: nftables
+        state: restarted
+

@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# {{ ansible_managed }}
+#
+# Generates /etc/kubernetes/enc/encryption-config.yaml with a fresh AES-256
+# key. Regenerating invalidates existing Secrets
+# Rotation is a deliberate procedure (add a second key, restart the API server, rewrite all
+# Secrets, remove the old key).
+#
+# Back up /etc/kubernetes/enc alongside etcd snapshots:
+# a snapshot without this file cannot decrypt Secrets.
+set -euo pipefail
+
+TARGET=/etc/kubernetes/enc/encryption-config.yaml
+
+if [[ -e "${TARGET}" ]]; then
+  echo "refusing: ${TARGET} exists; key rotation is a procedure, not a rerun" >&2
+  exit 1
+fi
+
+umask 077
+KEY=$(openssl rand -base64 32)
+
+TMP=$(mktemp /etc/kubernetes/enc/.encryption-config.XXXXXX)
+trap 'rm -f "${TMP}"' EXIT
+
+cat > "${TMP}" <<EOF
+
+
+# Generated on this node by $(basename "$0"). Do not commit.
+apiVersion: apiserver.config.k8s.io/v1
+kind: EncryptionConfiguration
+resources:
+  - resources:
+      - secrets
+      - configmaps
+    providers:
+      - aescbc:
+          keys:
+            - name: key1
+              secret: ${KEY}
+      - identity: {}
+EOF
+
+mv "${TMP}" "${TARGET}"
+trap - EXIT
+echo "wrote ${TARGET}"

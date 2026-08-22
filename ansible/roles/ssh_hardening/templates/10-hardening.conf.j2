@@ -1,0 +1,10 @@
+# {{ ansible_managed }}
+
+# Password Authentication
+PubKeyAuthentication yes
+{% if ssh_disable_password_auth %}
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+{% endif %}
+PermitRootLogin {{ ssh_permit_root_login }}
+PermitEmptyPasswords no

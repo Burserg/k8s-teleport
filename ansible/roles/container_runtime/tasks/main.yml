@@ -1,0 +1,91 @@
+---
+- name: Disable swap
+  ansible.builtin.command: swapoff -a
+  when: ansible_facts['swaptotal_mb'] | int > 0
+  changed_when: true
+
+- name: Disable swap in /etc/fstab
+  ansible.posix.mount:
+    path: "{{ item.mount }}"
+    state: absent_from_fstab
+  loop: "{{ ansible_facts['mounts'] | selectattr('fstype', 'equalto', 'swap') | list }}"
+  loop_control:
+    label: "{{ item.mount }}"
+
+- name: Mask systemd swap
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    masked: true
+  loop:
+    - swap.target
+  failed_when: false
+
+- name: Load kernel modules
+  community.general.modprobe:
+    name: overlay
+    state: present
+    persistent: present
+
+- name: Setup systemctl requirements
+  anible.posix.sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    sysctl_file: /etc/sysctl.d/99-kubernetes.conf
+    reload: true
+    state: present
+  loop:
+    - { key: net.ipv4.ip_forward, value: "1" }
+    # Needed for kubelet protectKernelDefaults
+    - { key: vm.overcommit_memory, value: "1" }
+    - { key: vm.panic_on_oom, value: "0" }
+    - { key: kernel.panic, value: "10" }
+    - { key: kernel.panic_on_oops, value: "1" }
+    # Grow inotify to keep from hitting too many open files
+    - { key: fs.inotify.max_user_instances, value: "8192" }
+    - { key: fs.inotify.max_user_watches, value: "524288" }
+
+- name: Install containerd
+  ansible.builtin.apt:
+    name: containerd
+    state: present
+
+- name: Check for containerd condig dir
+  ansible.builtin.file:
+    path: /etc/containerd
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  
+- name: Generate default containerd config
+  ansible.builtin.shell: containerd config default > /etc/containerd/config.toml
+  args:
+    creates: /etc/containerd/config.toml
+  notify: Restart containerd
+
+- name: Set systemd cgroup driver
+  ansible.builtin.lineinfile:
+    path: /etc/containerd.config.toml
+    regexp: '^(\s*)SystemdCgroup\s*=\s*false'
+    line: '\1SystemdCgroup = true'
+    backrefs: true
+  notify: Restart containerd
+
+- name: Enable containerd
+  ansible.builtin.systemd:
+    name: containerd
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Verify cgroup change took effect
+  ansible.builtin.command: containerd config dump
+  changed_when: false
+  register: _containerd_dump
+
+- name: Check that the systemd cgroups stuck
+  ansible.builtin.assert:
+    that: "'SystemdCgroup = true' in _containerd_dump.stdout"
+    fail_msg: >-
+      containerd config is missing the systemd cgroup.
+      check /etc/containerd/config.toml.

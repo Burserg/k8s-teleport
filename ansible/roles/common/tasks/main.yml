@@ -1,0 +1,68 @@
+---
+- name: Identify the interface for the cluster ip
+  ansible.builtin.set_fact:
+    cluster_interface: "{{ ansible_facts['interfaces'] }}"
+  loop: "{{ ansible_facts['interfaces'] }}"
+  when:
+    - ansible_facts['interfaces'] is defined
+    - ansible_facts[item]['ipv4'] is defined
+    - ansible_facts[item]['ipv4']['address'] == cluster_ip
+
+- name: Check if an interface was defined for the cluster ip
+  ansible.builtin.fail:
+    msg: >-
+      No interface defined for cluster ip {{ cluster_ip }}. 
+      Check ipconfig0 in Terraform.
+  when: cluster_interface is not defined
+
+- name: Report the interface
+  ansible.builtin.debug:
+    msg: "{{ inventory_hostname }}: Kubernetes will bind to {{ cluster_interface }} ({{ cluster_ip }})"
+
+- name: Set route for management interface
+  ansible.builtin.template:
+    src: 10-mgmt-routes.network.j2
+    dest: /etc/systemd/network/10-mgmt-route.network
+    owner: root
+    group: root
+    mode: '0644'
+  when:
+    - mgmt_static_routes | length > 0
+    - mgmt_interface is defined
+  notify: Restart systemd-networkd
+
+- name: Install base packages
+  ansible.builtin.apt:
+    name: "{{ ['curl', 'ca-certificates', 'python3-apt'] + common_packages_extra }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Install qemu-guest-agent for KVM guests
+  ansible.builtin.apt:
+    name: qemu-guest-agent
+    state: present
+  when:
+    - ansible_facts['virtualization_role'] | default('') == 'guest'
+    - ansible_facts['virtualization_type'] | default('') in ['kvm', 'qemu', 'KVM']
+
+- name: Enable qemu-guest-agent
+  ansible.builtin.systemd:
+    name: qemu-guest-agent
+    enabled: true
+    state: started
+  when:
+    - ansible_facts['virtualization_role'] | default('') == 'guest'
+    - ansible_facts['virtualization_type'] | default('') in ['kvm', 'qemu', 'KVM']
+  failed_when: false
+
+- name: Manage cluster block in /etc/hosts
+  ansible.builtin.blockinfile:
+    path: /etc/hosts
+    marker: "# {mark} ANSIBLE MANAGED BLOCK: lab cluster"
+    block: |
+      {% for host in groups['lab'] %}
+      {{ hostvars[host]['ansible_facts']['default_ipv4']['address'] }} {{ hostvars[host]['inventory_hostname'] }}.{{ lab_domain }} {{ hostvars[host]['inventory_hostname'] }}
+      {% endfor %}
+    state: present
+  when: manage_etc_hosts | bool

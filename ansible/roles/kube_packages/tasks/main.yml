@@ -1,0 +1,45 @@
+---
+- name: Install repo tooling
+  ansible.builtin.apt:
+    name: python3-debian
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Add Kubernetes APT repository
+  ansible.builtin.deb822_repository:
+    name: kubernetes
+    uris: "https://pkgs.k8s.io/core:/stable:/v{{ k8s_minor }}/deb/"
+    signed_by: "https://pkgs.k8s.io/core:/stable:/v{{ k8s_minor }}/deb/Release.key"
+    state: present
+    enabled: yes
+
+- name: Install kubelet, kubeadm, kubectl
+  ansible.builtin.apt:
+    name:
+      - kubelet
+      - kubeadm
+      - kubectl
+    state: present
+    update_cache: true
+
+- name: Hold K8s package versions
+  ansible.builtin.dpkg_selection:
+    name: "{{ item }}"
+    selection: hold
+  loop: [kubelet, kubeadm, kubectl]
+
+- name: Pin kubelet node IP
+  ansible.builtin.lineinfile:
+    path: /etc/default/kubelet
+    regexp: "^KUBELET_EXTRA_ARGS="
+    line: 'KUBELET_EXTRA_ARGS="--node-ip={{ cluster_ip }}"'
+    create: true
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Enable kubelet
+  ansible.builtin.systemd:
+    name: kubelet
+    enabled: true

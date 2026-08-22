@@ -1,0 +1,74 @@
+---
+# Full build. Safe to re-run.
+#   ansible-galaxy collection install -r requirements.yml
+#   ansible-playbook preflight.yml
+#   ansible-playbook site.yml
+
+- name: Preflight
+  ansible.builtin.import_playbook: preflight.yml
+
+- name: Base configuration
+  hosts: managed
+  become: true
+  roles:
+    - common
+    - ssh_hardening
+
+- name: Jumphost tooling
+  hosts: "{{ 'jump' if groups['jump'] | default([]) | length > 0 else 'control' }}"
+  become: true
+  roles:
+    - ansible_control
+
+- name: Distribute jumphost public key
+  hosts: managed
+  become: true
+  vars:
+    _controller: "{{ (groups['jump'] | default([]) | first) | default(groups['control'][0]) }}"
+  tasks:
+    - name: Authorize the controller key for {{ lab_user }}
+      ansible.posix.authorized_key:
+        user: "{{ lab_user }}"
+        key: "{{ hostvars[_controller]['control_public_key'] }}"
+        state: present
+
+- name: Container runtime and Kubernetes packages
+  hosts: lab
+  become: true
+  roles:
+    - container_runtime
+    - kube_packages
+
+- name: Initialise the control plane
+  hosts: control
+  become: true
+  roles:
+    - kubeadm_control
+
+- name: Join the workers
+  hosts: workers
+  become: true
+  roles:
+    - kubeadm_worker
+
+- name: Platform components
+  hosts: control
+  become: true
+  roles:
+    - platform_addons
+
+- name: Report
+  hosts: control
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Cluster state
+      ansible.builtin.command: kubectl get nodes,svc -A -o wide
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      changed_when: false
+      register: _state
+
+    - name: Show
+      ansible.builtin.debug:
+        msg: "{{ _state.stdout_lines }}"

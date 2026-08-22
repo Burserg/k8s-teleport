@@ -1,0 +1,26 @@
+# {{ ansible_managed }}
+# Cilium-native LoadBalancer
+---
+apiVersion: cilium.io/v2
+kind: CiliumLoadBalancerIPPool
+metadata:
+  name: lab-pool
+spec:
+  blocks:
+    - start: "{{ lb_ip_start }}"
+      stop: "{{ lb_ip_stop }}"
+---
+apiVersion: cilium.io/v2
+kind: CiliumL2AnnouncementPolicy
+metadata:
+  name: lab-l2
+spec:
+  # Restrict gARP to the physical NIC.
+  interfaces:
+    - {{ lb_interface_regex }}
+  loadBalancerIPs: true
+  externalIPs: true
+  nodeSelector:
+    matchExpressions:
+      - key: node-role.kubernetes.io/control-plane
+        operator: DoesNotExist

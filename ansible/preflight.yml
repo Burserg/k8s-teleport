@@ -1,0 +1,195 @@
+---
+- name: Preflight checks
+  hosts: managed
+  gather_facts: true
+  become: false
+
+  tasks:
+    - name: Supported OS family
+      ansible.builtin.assert:
+        that:
+          - ansible_facts['os_family'] == 'Debian'
+        fail_msg: >-
+          Unsupported OS family '{{ ansible_facts['os_family'] }}' on
+          {{ inventory_hostname }}. Adding another means editing the package tasks in
+          roles/common and roles/ssh_hardening.
+
+    - name: Python 3 present
+      ansible.builtin.assert:
+        that:
+          - ansible_facts['python_version'] is version('3.8', '>=')
+        fail_msg: "Python 3.8+ required, found {{ ansible_facts['python_version'] }}."
+
+    - name: Passwordless sudo works
+      ansible.builtin.command: id -u
+      become: true
+      changed_when: false
+      register: _sudo_check
+      failed_when: _sudo_check.stdout | trim != "0"
+
+    - name: systemd is the init system
+      ansible.builtin.assert:
+        that:
+          - ansible_facts['service_mgr'] == 'systemd'
+        fail_msg: "These roles assume systemd; found {{ ansible_facts['service_mgr'] }}."
+
+    - name: Exactly one control host
+      ansible.builtin.assert:
+        that:
+          - groups['control'] | length == 1
+        fail_msg: >-
+          Expected exactly one host in [control], found
+          {{ groups['control'] | default([]) | length }}. Multi-control-plane
+          kubeadm needs additional configuration which hasnt been designed here.
+      run_once: true
+
+    - name: At least one worker
+      ansible.builtin.assert:
+        that:
+          - groups['workers'] | default([]) | length >= 1
+        fail_msg: "No hosts in [workers]."
+      run_once: true
+
+    # Runs from the jumphost. If this fails, the ProxyJump in the
+    # inventory is wrong or the VLAN firewall is blocking the jumphost.
+    - name: Jumphost can reach every cluster node on port 22
+      ansible.builtin.wait_for:
+        host: "{{ hostvars[item].cluster_ip | default(item) }}"
+        port: 22
+        timeout: 5
+      loop: "{{ groups['lab'] }}"
+      delegate_to: "{{ (groups['jump'] | default([]) | first) | default(groups['control'][0]) }}"
+      run_once: true
+
+    - name: Cluster nodes can reach each other on the API and kubelet ports
+      ansible.builtin.wait_for:
+        host: "{{ hostvars[groups['control'][0]].cluster_ip }}"
+        port: 6443
+        timeout: 5
+      when:
+        - inventory_hostname in groups['lab']
+        - inventory_hostname not in groups['control']
+      failed_when: false
+
+    # Environment connectivity validation 
+    # If egress or DNS is blocked, the build fails.
+
+    - name: DNS resolution works
+      ansible.builtin.command: getent hosts registry.k8s.io
+      changed_when: false
+      register: _dns
+      failed_when: _dns.rc != 0
+      ignore_errors: true
+
+    - name: Report DNS failure clearly
+      ansible.builtin.fail:
+        msg: >-
+          {{ inventory_hostname }} cannot resolve registry.k8s.io. The
+          configured nameserver may be unreachable. Container images cannot 
+          be pulled without this.
+      when: _dns is failed
+
+    - name: Container registries are reachable
+      ansible.builtin.uri:
+        url: "{{ item }}"
+        method: HEAD
+        status_code: [200, 301, 302, 401, 403, 404]
+        timeout: 10
+      loop:
+        # Container registries
+        - https://registry.k8s.io/v2/
+        - https://ghcr.io/v2/
+        - https://quay.io/v2/
+        # Package repo, helm binary, Gateway API CRDs, Flux install script
+        - https://pkgs.k8s.io/
+        - https://get.helm.sh/
+        - https://raw.githubusercontent.com/
+        - https://fluxcd.io/
+      register: _egress
+      failed_when: false
+
+    - name: Report blocked egress
+      ansible.builtin.fail:
+        msg: >-
+          Cannot reach {{ item.item }} from {{ inventory_hostname }}.
+          egress is required for image pulls. Blocked registries:
+          {{ _egress.results | selectattr('status', 'undefined') | map(attribute='item') | list }}
+      when: item.status is not defined
+      loop: "{{ _egress.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    # Certificate validation and etcd both depend on accurate time.
+    - name: Time synchronisation is active
+      ansible.builtin.command: timedatectl show -p NTPSynchronized --value
+      changed_when: false
+      register: _ntp
+
+    - name: Warn if the clock is not synchronised
+      ansible.builtin.fail:
+        msg: >-
+          {{ inventory_hostname }} reports NTPSynchronized=no. Certificate
+          validation and etcd are both time-sensitive. Confirm a reachable
+          NTP source before continuing.
+      when: _ntp.stdout | trim != "yes"
+
+    - name: Kernel is new enough for Cilium
+      ansible.builtin.assert:
+        that:
+          - ansible_kernel is version('5.10', '>=')
+        fail_msg: >-
+          {{ inventory_hostname }} runs kernel {{ ansible_kernel }}; Cilium
+          requires 5.10 or an equivalent distribution kernel.
+
+    - name: cgroup v2 unified hierarchy is mounted at /sys/fs/cgroup
+      ansible.builtin.command: stat -fc %T /sys/fs/cgroup
+      changed_when: false
+      register: _cgfs
+      failed_when: _cgfs.stdout | trim != "cgroup2fs"
+
+    - name: bpffs is mounted at /sys/fs/bpf
+      ansible.builtin.command: stat -fc %T /sys/fs/bpf
+      changed_when: false
+      register: _bpffs
+      failed_when: _bpffs.stdout | trim != "bpf_fs"
+
+    # Cilium Limitations section: forcefully terminating sockets connected
+    # to deleted service backends requires CONFIG_INET_DIAG,
+    # CONFIG_INET_UDP_DIAG and CONFIG_INET_DIAG_DESTROY. Otherwise,
+    # connections to removed backends hang.
+
+    - name: Kernel has the socket-diag options socket-LB termination needs
+      ansible.builtin.shell: >-
+        set -o pipefail;
+        grep -E "^CONFIG_INET_DIAG=|^CONFIG_INET_UDP_DIAG=|^CONFIG_INET_DIAG_DESTROY=" /boot/config-$(uname -r)
+      args:
+        executable: /bin/bash
+      changed_when: false
+      register: _sockdiag
+      failed_when: >-
+        _sockdiag.stdout_lines | select('match', '.*=(y|m)$') | list | length < 3
+
+    - name: WireGuard is available in the kernel
+      ansible.builtin.command: modinfo wireguard
+      changed_when: false
+      register: _wg
+      failed_when: false
+
+    - name: Fail if WireGuard is missing
+      ansible.builtin.fail:
+        msg: >-
+          {{ inventory_hostname }} has no WireGuard kernel module, but Cilium
+          is configured with encryption.type=wireguard. Install a kernel with
+          CONFIG_WIREGUARD or disable encryption in group_vars.
+      when:
+        - _wg.rc != 0
+        - inventory_hostname in groups['lab']
+
+    - name: Swap is off or will be disabled
+      ansible.builtin.debug:
+        msg: >-
+          Swap is active on {{ inventory_hostname }}; the container_runtime
+          role disables it on Kubernetes nodes. kubelet requires swapoff.
+      when:
+        - ansible_facts['swaptotal_mb'] | int > 0
+        - inventory_hostname in groups['lab']

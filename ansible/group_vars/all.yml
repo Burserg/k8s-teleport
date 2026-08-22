@@ -1,0 +1,73 @@
+---
+###
+# The only Ansible file that should need modification
+###
+
+user: "{{ansible_user | default('ubuntu') }}"
+kubeconfig: "/home/{{ user }}/.kube/config"
+
+###
+# SSH Policy
+###
+
+ssh_disable_password_auth: true
+ssh_permit_root_login: false
+manage_etc_hosts: true
+
+###
+# Kubernetes config
+###
+
+k8s_minor: "1.36"
+k8s_version: "1.36.2"
+k8s_package_version: "1.36.2-1.1"
+pod_subnet: "10.244.0.0/16"
+service_subnet: "10.96.0.0/12"
+control_plane_ip: "{{ hostvars[groups['control'][0]].cluster_ip }}"
+control_plane_endpoint: "{{ groups['control'][0] }}.{{ lab_domain }}"
+helm_version: "3.16.3"
+
+###
+# CNI / Gateway Config
+###
+cilium_version: "1.20.1"
+gateway_api_version: "v1.6.1"
+cilium_wireguard: true
+
+###
+# Storage
+###
+local_path_manifest: "https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.30/deploy/local-path-storage.yaml"
+load_balancer_ip_start: "10.75.30.100"
+load_balancer_ip_end: "10.75.30.150"
+load_balancer_ingress_ip: "10.75.30.100"
+load_balancer_teleport_ip: "10.75.30.101"
+
+###
+# TLS / Certs
+###
+cert_manager_version: "v1.21.1"
+gateway_namespace: gateway-infra
+gateway_name: lab-gateway
+acme_email: "cory@devbycory.com"
+acme_solver: "dns01"
+
+# This goes in the ansible vault, but is left here for reference.
+# Use "edit zone DNS" template
+# Needed permissions:
+# Permissions : Zone.Zone.Read, Zone.DNS.Edit
+# Zone Resources : Include - Specific Zone - "domain.name"
+# Client IP Address Filtering: Is In - <public facing IP>
+cloudflare_api_token: ""
+
+###
+# Applications
+###
+app_namespace: cheesecake
+app_hostname: "cheesecake.devbycory.com"
+app_tenant_group: "app-devs"
+app_tenant_user: "alice"
+gitops_repo: "https://github.com/burserg/k8s-teleport.git"
+gitops_branch: "main"
+teleport_version: "18.10.0"
+teleport_cluster_name: "teleport.devbycory.com"

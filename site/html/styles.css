@@ -1,0 +1,78 @@
+:root {
+  --ink: #2b2320;
+  --paper: #faf6f1;
+  --accent: #c96f4a;
+  --rule: #e4d9cc;
+  --max: 44rem;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: Georgia, 'Times New Roman', serif;
+  color: var(--ink);
+  background: var(--paper);
+  line-height: 1.65;
+}
+
+.site-header, main, .site-footer {
+  max-width: var(--max);
+  margin: 0 auto;
+  padding: 0 1.25rem;
+}
+
+.site-header { padding-top: 3.5rem; }
+
+.kicker {
+  font-family: Verdana, Geneva, sans-serif;
+  font-size: 0.75rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin: 0 0 0.5rem;
+}
+
+h1 {
+  font-size: clamp(2.2rem, 6vw, 3.4rem);
+  line-height: 1.1;
+  margin: 0 0 1rem;
+  font-weight: normal;
+}
+
+.lede {
+  font-size: 1.1rem;
+  color: #5b4f47;
+  border-bottom: 1px solid var(--rule);
+  padding-bottom: 2rem;
+  margin-bottom: 0;
+}
+
+h2 {
+  font-size: 1.5rem;
+  font-weight: normal;
+  margin: 2.75rem 0 0.75rem;
+}
+
+h3 {
+  font-family: Verdana, Geneva, sans-serif;
+  font-size: 0.8rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin: 1.75rem 0 0.5rem;
+}
+
+ul, ol { padding-left: 1.4rem; margin: 0.5rem 0; }
+li { margin: 0.45rem 0; }
+ol li { padding-left: 0.35rem; }
+
+.site-footer {
+  margin-top: 4rem;
+  padding-top: 1.5rem;
+  padding-bottom: 3rem;
+  border-top: 1px solid var(--rule);
+  font-family: Verdana, Geneva, sans-serif;
+  font-size: 0.78rem;
+  color: #857567;
+}

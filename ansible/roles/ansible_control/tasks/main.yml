@@ -1,0 +1,70 @@
+---
+- name: Install Ansible
+  ansible.builtin.apt:
+    name: ansible
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  when: control_self_hosting | bool
+
+- name: Ensure .ssh exists
+  ansible.builtin.file:
+    path: "/home/{{ lab_user }}/.ssh"
+    state: directory
+    owner: "{{ lab_user }}"
+    group: "{{ lab_user }}"
+    mode: "0700"
+
+- name: Generate keypair
+  community.crypto.openssh_keypair:
+    path: "{{ control_key_path }}"
+    type: "{{ control_key_type }}"
+    owner: "{{ lab_user }}"
+    group: "{{ lab_user }}"
+    mode: "0600"
+    regenerate: never
+  register: _control_key
+
+- name: Publish public key
+  ansible.builtin.set_fact:
+    control_public_key: "{{ _control_key.public_key }}"
+
+- name: Client-side SSH config
+  ansible.builtin.copy:
+    dest: "/home/{{ lab_user }}/.ssh/config"
+    owner: "{{ lab_user }}"
+    group: "{{ lab_user }}"
+    mode: "0600"
+    content: |
+      Host *
+        IdentityFile {{ control_key_path }}
+        StrictHostKeyChecking accept-new
+
+- name: Create working directory
+  ansible.builtin.file:
+    path: "{{ control_workdir }}"
+    state: directory
+    owner: "{{ lab_user }}"
+    group: "{{ lab_user }}"
+    mode: "0755"
+
+- name: Sync playbooks to control host
+  ansible.posix.synchronize:
+    src: "{{ playbook_dir }}/"
+    dest: "{{ control_workdir }}/ansible/"
+    delete: false
+    rsync_opts:
+      - "--exclude=.git"
+      - "--exclude=*.retry"
+  delegate_to: localhost
+  become: false
+  when: control_self_hosting | bool
+
+- name: Fix ownership of synced playbooks
+  ansible.builtin.file:
+    path: "{{ control_workdir }}"
+    state: directory
+    owner: "{{ lab_user }}"
+    group: "{{ lab_user }}"
+    recurse: true
+  when: control_self_hosting | bool

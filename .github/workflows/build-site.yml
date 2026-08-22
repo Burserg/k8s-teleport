@@ -1,0 +1,30 @@
+name: build-site
+on:
+  push:
+    branches: [main]
+    paths: ['site/**']
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: site
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/cheesecake-site:latest
+            ghcr.io/${{ github.repository_owner }}/cheesecake-site:${{ github.sha }}
+      - name: Print the tag to pin
+        run: echo "Pin gitops/apps/cheesecake/deployment.yaml to ghcr.io/${{ github.repository_owner }}/cheesecake-site:${{ github.sha }}"

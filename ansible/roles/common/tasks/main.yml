@@ -46,6 +46,15 @@
     - ansible_facts['virtualization_role'] | default('') == 'guest'
     - ansible_facts['virtualization_type'] | default('') in ['kvm', 'qemu', 'KVM']
 
+- name: Check for the guest-agent virtio channel
+  ansible.builtin.stat:
+    path: /dev/virtio-ports/org.qemu.guest_agent.0
+  register: _qga_dev
+  when:
+    - ansible_facts['virtualization_role'] | default('') == 'guest'
+    - ansible_facts['virtualization_type'] | default('') in ['kvm', 'qemu', 'KVM']
+
+
 - name: Enable qemu-guest-agent
   ansible.builtin.systemd:
     name: qemu-guest-agent
@@ -54,7 +63,7 @@
   when:
     - ansible_facts['virtualization_role'] | default('') == 'guest'
     - ansible_facts['virtualization_type'] | default('') in ['kvm', 'qemu', 'KVM']
-  failed_when: false
+    - _qga_dev.stat.exists
 
 - name: Manage cluster block in /etc/hosts
   ansible.builtin.blockinfile:

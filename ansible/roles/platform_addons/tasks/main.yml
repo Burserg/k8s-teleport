@@ -106,6 +106,47 @@
     kubeconfig: "{{ kubeconfig }}"
   become_user: "{{ lab_user }}"
 
+- name: Read the issuer of the served TLS certificate
+  ansible.builtin.shell: >-
+    set -o pipefail;
+    kubectl -n {{ gateway_namespace }} get secret {{ gateway_name }}-tls
+    -o jsonpath='{.data.tls\.crt}' | base64 -d | openssl x509 -noout -issuer
+  args:
+    executable: /bin/bash
+  environment:
+    KUBECONFIG: "{{ kubeconfig }}"
+  become_user: "{{ lab_user }}"
+  register: _served_issuer
+  changed_when: false
+  failed_when: false            # secret absent before first issuance
+  when: acme_issuer is match('letsencrypt-')
+
+- name: Delete the TLS secret to force reissue from {{ acme_issuer }}
+  kubernetes.core.k8s:
+    state: absent
+    kind: Secret
+    name: "{{ gateway_name }}-tls"
+    namespace: "{{ gateway_namespace }}"
+    kubeconfig: "{{ kubeconfig }}"
+  become_user: "{{ lab_user }}"
+  register: _cert_reissued
+  when:
+    - acme_issuer is match('letsencrypt-')
+    - _served_issuer.rc == 0
+    - >-
+      ('STAGING' in _served_issuer.stdout)
+      != (acme_issuer == 'letsencrypt-staging')
+
+- name: Wait for the reissued certificate to become Ready
+  ansible.builtin.command: >-
+    kubectl -n {{ gateway_namespace }} wait certificate/{{ gateway_name }}-tls
+    --for=condition=Ready --timeout=300s
+  environment:
+    KUBECONFIG: "{{ kubeconfig }}"
+  become_user: "{{ lab_user }}"
+  changed_when: false
+  when: _cert_reissued is changed
+
 - name: Wait for the Gateway address to come up
   ansible.builtin.command: >-
     kubectl -n {{ gateway_namespace }} wait gateway/{{ gateway_name }}

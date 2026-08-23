@@ -6,3 +6,4 @@ terraform.tfvars
 .terraform.lock.hcl
 ansible/inventory/hosts.ini
 *.retry
+.vscode

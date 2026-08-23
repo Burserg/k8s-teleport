@@ -8,7 +8,7 @@ metadata:
 spec:
   secretName: {{ gateway_name }}-tls
   issuerRef:
-    name: letsencrypt-staging
+    name: {{ acme_issuer }}
     kind: ClusterIssuer
   dnsNames:
     - {{ app_hostname }}

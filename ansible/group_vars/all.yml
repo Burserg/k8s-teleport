@@ -52,6 +52,13 @@ gateway_namespace: gateway-infra
 gateway_name: lab-gateway
 acme_email: "cory@devbycory.com"
 acme_solver: "dns01"
+#   letsencrypt-staging - untrusted root, browser warns:
+#     staging rate limits are generous.
+#   letsencrypt-prod - trusted cert. Production limits are strict
+#     (5 duplicate certs/week)
+# Changing this and re-running the playbook deletes the old TLS secret so
+# cert-manager reissues from the new issuer immediately.
+acme_issuer: "letsencrypt-prod"
 
 # This goes in the ansible vault, but is left here for reference.
 # Use "edit zone DNS" template

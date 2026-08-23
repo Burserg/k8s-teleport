@@ -204,6 +204,16 @@
     - backendtlspolicies
     - tlsroutes
 
+- name: Install the cilium CLI
+  ansible.builtin.unarchive:
+    src: "https://github.com/cilium/cilium-cli/releases/download/v{{ cilium_cli_version }}/cilium-linux-amd64.tar.gz"
+    dest: /usr/local/bin
+    remote_src: true
+    creates: /usr/local/bin/cilium
+    owner: root
+    group: root
+    mode: "0755"
+
 - name: Add the Cilium Helm repository
   kubernetes.core.helm_repository:
     name: cilium

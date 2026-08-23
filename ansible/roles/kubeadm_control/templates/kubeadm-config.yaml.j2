@@ -44,9 +44,10 @@ apiServer:
     - name: tls-min-version
       value: VersionTLS12
 
-    # Anonymous requests are rejected rather than relying on RBAC
-    - name: anonymous-auth
-      value: "false"
+    # Anonymous requests are rejected everywhere except /healthz, /livez and
+    # /readyz
+    - name: authentication-config
+      value: /etc/kubernetes/authn/authentication-config.yaml
 
   extraVolumes:
     - name: encryption-config
@@ -57,6 +58,11 @@ apiServer:
     - name: audit-policy
       hostPath: /etc/kubernetes/audit
       mountPath: /etc/kubernetes/audit
+      readOnly: true
+      pathType: DirectoryOrCreate
+    - name: authn-config
+      hostPath: /etc/kubernetes/authn
+      mountPath: /etc/kubernetes/authn
       readOnly: true
       pathType: DirectoryOrCreate
     - name: audit-log

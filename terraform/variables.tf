@@ -222,7 +222,7 @@ variable "nodes" {
     cores = number
     memory = number
     role = string
-    storage = optional(storage)
+    storage = optional(string)
     disk_size = optional(string)
     etcd_disk_size = optional(string)
     etcd_disk_storage = optional(string)

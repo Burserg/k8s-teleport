@@ -20,7 +20,7 @@ manage_etc_hosts: true
 
 k8s_minor: "1.36"
 k8s_version: "1.36.2"
-k8s_package_version: "1.36.2-1.1"
+k8s_package_version: "1.36.2-2.1"
 pod_subnet: "10.244.0.0/16"
 service_subnet: "10.96.0.0/12"
 control_plane_ip: "{{ hostvars[groups['control'][0]].cluster_ip }}"

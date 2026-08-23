@@ -4,9 +4,20 @@
     path: /etc/kubernetes/kubelet.conf
   register: _kubelet_conf
 
+- name: Write the discovery kubeconfig
+  ansible.builtin.template:
+    src: discovery.kubeconfig.j2
+    dest: /etc/kubernetes/discovery.kubeconfig
+    owner: root
+    group: root
+    mode: "0600"
+  when: not _kubelet_conf.stat.exists
+
 - name: Join the cluster
   ansible.builtin.command: >-
-    {{ hostvars[groups['control'][0]]['kubeadm_join_command'] }}
+    kubeadm join
+    --discovery-file /etc/kubernetes/discovery.kubeconfig
+    --tls-bootstrap-token {{ hostvars[groups['control'][0]]['kubeadm_join_token'] }}
     --node-name {{ inventory_hostname }}
   when: not _kubelet_conf.stat.exists
   changed_when: true

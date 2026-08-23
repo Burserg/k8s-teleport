@@ -34,6 +34,7 @@
   loop:
     - /etc/kubernetes/enc
     - /etc/kubernetes/audit
+    - /etc/kubernetes/authn
     - /var/log/kubernetes/audit
 
 - name: Install the enc config gen script
@@ -48,6 +49,15 @@
   ansible.builtin.command: /usr/local/sbin/enc-config-gen
   args:
     creates: /etc/kubernetes/enc/encryption-config.yaml
+
+- name: Write the authentication configuration
+  ansible.builtin.template:
+    src: authentication-config.yaml.j2
+    dest: /etc/kubernetes/authn/authentication-config.yaml
+    owner: root
+    group: root
+    mode: "0600"
+
 
 - name: Write audit policy
   ansible.builtin.template:
@@ -158,14 +168,20 @@
     user: root
     job: /usr/local/sbin/etcd-backup
 
-- name: Generate a worker join command
-  ansible.builtin.command: kubeadm token create --print-join-command --ttl 2h
+- name: Generate a worker bootstrap token
+  ansible.builtin.command: kubeadm token create --ttl 2h
   changed_when: false
-  register: _join_cmd
+  register: _join_token
 
-- name: Publish the join command to the workers
+- name: Read the cluster CA certificate
+  ansible.builtin.slurp:
+    src: /etc/kubernetes/pki/ca.crt
+  register: _cluster_ca
+
+- name: Publish join credentials to the workers
   ansible.builtin.set_fact:
-    kubeadm_join_command: "{{ _join_cmd.stdout }}"
+    kubeadm_join_token: "{{ _join_token.stdout }}"
+    kubeadm_ca_cert_b64: "{{ _cluster_ca.content }}"
 
 
 # Cilium configs

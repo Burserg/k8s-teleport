@@ -1,0 +1,13 @@
+# {{ ansible_managed }}
+# Anonymous requests are allowed
+# ONLY for the health endpoints and rejected everywhere else.
+
+apiVersion: apiserver.config.k8s.io/v1
+kind: AuthenticationConfiguration
+anonymous:
+  enabled: true
+  conditions:
+    - path: /healthz
+    - path: /livez
+    - path: /readyz
+    - path: /api/v1/namespaces/kube-public/configmaps/cluster-info

@@ -10,7 +10,7 @@ spec:
     - start: "{{ lb_ip_start }}"
       stop: "{{ lb_ip_stop }}"
 ---
-apiVersion: cilium.io/v2
+apiVersion: cilium.io/v2alpha1
 kind: CiliumL2AnnouncementPolicy
 metadata:
   name: lab-l2

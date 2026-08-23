@@ -19,7 +19,7 @@ resource "proxmox_vm_qemu" "node" {
 
     bios = var.bios
     scsihw = var.scsihw
-    boot = "order${var.os_disk_slot}"
+    boot = "order=${var.os_disk_slot}"
 
     dynamic "efidisk" {
       for_each = var.bios == "ovmf" ? [1] : []
@@ -72,7 +72,7 @@ resource "proxmox_vm_qemu" "node" {
         for_each = var.serial_console ? [1] : []
         content {
           id = 0
-          type = "scoket"
+          type = "socket"
         }
     }
 

@@ -1,0 +1,18 @@
+version: 2
+ethernets:
+  primary:
+    match:
+      name: "en*"
+%{ if ip == null ~}
+    dhcp4: true
+%{ else ~}
+    dhcp4: false
+    addresses:
+      - ${ip}/${prefix}
+    routes:
+      - to: default
+        via: ${gateway}
+    nameservers:
+      addresses: [${nameserver}]
+      search: [${searchdomain}]
+%{ endif ~}

@@ -1,0 +1,5 @@
+---
+# GCP VPC subnets are routed networks, not a shared L2 broadcast domain.
+# The regional external passthrough Network Load Balancer targets Cilium's
+# host-network Gateway listeners on the worker nodes.
+network_profile: hostnetwork

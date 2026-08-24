@@ -5,7 +5,6 @@ omitStages:
   - RequestReceived
 
 rules:
-  # Cut the highest volume of noise
   - level: None
     users: ["system:kube-scheduler", "system:kube-controller-manager"]
   - level: None
@@ -15,8 +14,6 @@ rules:
     resources:
       - group: ""
         resources: ["events", "endpoints"]
-
-  # Secrets and configmaps
   - level: Metadata
     resources:
       - group: ""
@@ -25,23 +22,16 @@ rules:
         resources: ["tokenreviews"]
 
   # RBAC changes
-  # log exists to answer.
   - level: RequestResponse
     resources:
       - group: rbac.authorization.k8s.io
         resources: ["roles", "rolebindings", "clusterroles", "clusterrolebindings"]
-
-  # Certificate issuance. Who approved a CSR
   - level: RequestResponse
     resources:
       - group: certificates.k8s.io
         resources: ["certificatesigningrequests", "certificatesigningrequests/approval"]
-
-  # Everything the tenant namespace does at a metadata level.
   - level: Metadata
     namespaces: ["{{ app_namespace }}"]
-
-  # All writes cluster-wide.
   - level: Metadata
     verbs: ["create", "update", "patch", "delete", "deletecollection"]
 

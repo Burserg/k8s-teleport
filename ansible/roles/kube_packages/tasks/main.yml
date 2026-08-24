@@ -10,9 +10,13 @@
   ansible.builtin.deb822_repository:
     name: kubernetes
     uris: "https://pkgs.k8s.io/core:/stable:/v{{ k8s_minor }}/deb/"
+    # pkgs.k8s.io uses a flat repository path, represented in deb822 as "/".
+    # Exact-path suites omit Components.
+    suites:
+      - "/"
     signed_by: "https://pkgs.k8s.io/core:/stable:/v{{ k8s_minor }}/deb/Release.key"
     state: present
-    enabled: yes
+    enabled: true
 
 - name: Install kubelet, kubeadm, kubectl
   ansible.builtin.apt:
@@ -24,7 +28,7 @@
     update_cache: true
 
 - name: Hold K8s package versions
-  ansible.builtin.dpkg_selection:
+  ansible.builtin.dpkg_selections:
     name: "{{ item }}"
     selection: hold
   loop: [kubelet, kubeadm, kubectl]

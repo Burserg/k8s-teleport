@@ -4,6 +4,11 @@
 terraform.tfvars
 .terraform/
 .terraform.lock.hcl
+!terraform-gcp/.terraform.lock.hcl
 ansible/inventory/hosts.ini
 *.retry
 .vscode
+*.kubeconfig
+*.key
+*.csr
+*.crt

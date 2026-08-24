@@ -15,7 +15,10 @@ spec:
     metadata:
       labels:
         app: cheesecake
+      annotations:
+        app.devbycory.com/image-build: initial
     spec:
+      automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
         runAsUser: 101
@@ -24,6 +27,7 @@ spec:
       containers:
         - name: nginx
           image: ghcr.io/burserg/cheesecake-site:latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 8080
               name: http

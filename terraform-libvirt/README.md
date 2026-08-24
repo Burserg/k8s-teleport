@@ -114,5 +114,5 @@ router's DHCP range.
 make init && make plan && make apply   # from the repo root; TF_DIR points here
 ```
 
-Apply writes `../ansible/inventory/hosts.ini`, then the Ansible flow is
+Apply writes `../ansible/Inventory/hosts.ini`, then the Ansible flow is
 unchanged: `make cluster`.

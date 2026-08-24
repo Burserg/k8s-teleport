@@ -27,7 +27,7 @@
     persistent: present
 
 - name: Setup systemctl requirements
-  anible.posix.sysctl:
+  ansible.posix.sysctl:
     name: "{{ item.key }}"
     value: "{{ item.value }}"
     sysctl_file: /etc/sysctl.d/99-kubernetes.conf
@@ -65,7 +65,7 @@
 
 - name: Set systemd cgroup driver
   ansible.builtin.lineinfile:
-    path: /etc/containerd.config.toml
+    path: /etc/containerd/config.toml
     regexp: '^(\s*)SystemdCgroup\s*=\s*false'
     line: '\1SystemdCgroup = true'
     backrefs: true

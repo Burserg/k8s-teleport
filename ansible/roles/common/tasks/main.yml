@@ -1,12 +1,12 @@
 ---
 - name: Identify the interface for the cluster ip
   ansible.builtin.set_fact:
-    cluster_interface: "{{ ansible_facts['interfaces'] }}"
+    cluster_interface: "{{ item }}"
   loop: "{{ ansible_facts['interfaces'] }}"
   when:
     - ansible_facts['interfaces'] is defined
-    - ansible_facts[item]['ipv4'] is defined
-    - ansible_facts[item]['ipv4']['address'] == cluster_ip
+    - ansible_facts[item].ipv4 is defined
+    - ansible_facts[item].ipv4.address | default('') == cluster_ip
 
 - name: Check if an interface was defined for the cluster ip
   ansible.builtin.fail:
@@ -27,9 +27,28 @@
     group: root
     mode: '0644'
   when:
-    - mgmt_static_routes | length > 0
+    - mgmt_static_routes | default([])| length > 0
     - mgmt_interface is defined
   notify: Restart systemd-networkd
+
+- name: Check for a legacy Kubernetes APT source
+  ansible.builtin.stat:
+    path: /etc/apt/sources.list.d/kubernetes.sources
+  register: _kubernetes_apt_source
+
+- name: Read the legacy Kubernetes APT source
+  ansible.builtin.slurp:
+    path: /etc/apt/sources.list.d/kubernetes.sources
+  register: _kubernetes_apt_source_contents
+  when: _kubernetes_apt_source.stat.exists
+
+- name: Remove a malformed legacy Kubernetes APT source
+  ansible.builtin.file:
+    path: /etc/apt/sources.list.d/kubernetes.sources
+    state: absent
+  when:
+    - _kubernetes_apt_source.stat.exists
+    - "'Suites: /' not in (_kubernetes_apt_source_contents.content | b64decode)"
 
 - name: Install base packages
   ansible.builtin.apt:
@@ -74,4 +93,15 @@
       {{ hostvars[host]['ansible_facts']['default_ipv4']['address'] }} {{ hostvars[host]['inventory_hostname'] }}.{{ lab_domain }} {{ hostvars[host]['inventory_hostname'] }}
       {% endfor %}
     state: present
+  when: manage_etc_hosts | bool
+
+- name: Disable cloud-init after first-boot provisioning
+  ansible.builtin.file:
+    path: /etc/cloud/cloud-init.disabled
+    state: touch
+    owner: root
+    group: root
+    mode: "0644"
+    modification_time: preserve
+    access_time: preserve
   when: manage_etc_hosts | bool

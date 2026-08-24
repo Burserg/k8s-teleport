@@ -11,9 +11,9 @@
     cluster_cidr_v4: "10.75.30.0/24"
   tasks:
     - name: Identify the mgmt interface
-      ansible.builtin.set_facts:
+      ansible.builtin.set_fact:
         _uplink: "{{ item }}"
-      loop: "{{ ansible_facts['interface'] }}"
+      loop: "{{ ansible_facts['interfaces'] }}"
       when:
         - ansible_facts[item] is defined
         - ansible_facts[item].ipv4 is defined

@@ -8,14 +8,14 @@
   loop:
     - { name: jetstack, url: "https://charts.jetstack.io" }
     - { name: teleport, url: "https://charts.releases.teleport.dev" }
-  become_user: "{{ lab_user }}"
+  become_user: "{{ user }}"
 
 - name: Install local-path-provisioner
   kubernetes.core.k8s:
     src: "{{ local_path_manifest }}"
     state: present
     kubeconfig: "{{ kubeconfig }}"
-  become_user: "{{ lab_user }}"
+  become_user: "{{ user }}"
 
 - name: Make local-path the default StorageClass
   kubernetes.core.k8s:
@@ -27,7 +27,7 @@
       metadata:
         annotations:
           storageclass.kubernetes.io/is-default-class: "true"
-  become_user: "{{ lab_user }}"
+  become_user: "{{ user }}"
 
 # Cilium as LB
 
@@ -36,7 +36,7 @@
     definition: "{{ lookup('template', 'cilium-lb.yaml.j2') | from_yaml_all | list }}"
     state: present
     kubeconfig: "{{ kubeconfig }}"
-  become_user: "{{ lab_user }}"
+  become_user: "{{ user }}"
   when: network_profile == "l2"
 
 # Cert Manager
@@ -61,7 +61,7 @@
       extraArgs:
         - --dns01-recursive-nameservers=1.1.1.1:53,8.8.8.8:53
         - --dns01-recursive-nameservers-only
-  become_user: "{{ lab_user }}"
+  become_user: "{{ user }}"
 
 - name: Create  DNS provider creds for DNS-01
   kubernetes.core.k8s:
@@ -75,7 +75,7 @@
         namespace: cert-manager
       stringData:
         api-token: "{{ cloudflare_api_token }}"
-  become_user: "{{ lab_user }}"
+  become_user: "{{ user }}"
   no_log: true
   when: cloudflare_api_token | length > 0
 
@@ -84,7 +84,7 @@
     definition: "{{ lookup('template', 'cluster-issuers.yaml.j2') | from_yaml_all | list }}"
     state: present
     kubeconfig: "{{ kubeconfig }}"
-  become_user: "{{ lab_user }}"
+  become_user: "{{ user }}"
 
 # Cilium as Gateway
 
@@ -97,14 +97,14 @@
       kind: Namespace
       metadata:
         name: "{{ gateway_namespace }}"
-  become_user: "{{ lab_user }}"
+  become_user: "{{ user }}"
 
 - name: Create the Gateway and its certificate
   kubernetes.core.k8s:
     definition: "{{ lookup('template', 'gateway.yaml.j2') | from_yaml_all | list }}"
     state: present
     kubeconfig: "{{ kubeconfig }}"
-  become_user: "{{ lab_user }}"
+  become_user: "{{ user }}"
 
 - name: Read the issuer of the served TLS certificate
   ansible.builtin.shell: >-
@@ -115,7 +115,7 @@
     executable: /bin/bash
   environment:
     KUBECONFIG: "{{ kubeconfig }}"
-  become_user: "{{ lab_user }}"
+  become_user: "{{ user }}"
   register: _served_issuer
   changed_when: false
   failed_when: false            # secret absent before first issuance
@@ -128,7 +128,7 @@
     name: "{{ gateway_name }}-tls"
     namespace: "{{ gateway_namespace }}"
     kubeconfig: "{{ kubeconfig }}"
-  become_user: "{{ lab_user }}"
+  become_user: "{{ user }}"
   register: _cert_reissued
   when:
     - acme_issuer is match('letsencrypt-')
@@ -143,7 +143,7 @@
     --for=condition=Ready --timeout=300s
   environment:
     KUBECONFIG: "{{ kubeconfig }}"
-  become_user: "{{ lab_user }}"
+  become_user: "{{ user }}"
   changed_when: false
   when: _cert_reissued is changed
 
@@ -153,33 +153,114 @@
     --for=condition=Programmed --timeout=180s
   environment:
     KUBECONFIG: "{{ kubeconfig }}"
-  become_user: "{{ lab_user }}"
+  become_user: "{{ user }}"
   changed_when: false
 
 # Flux
 
+- name: Download the Flux CLI archive
+  ansible.builtin.get_url:
+    url: "https://github.com/fluxcd/flux2/releases/download/v{{ flux_version }}/flux_{{ flux_version }}_linux_amd64.tar.gz"
+    dest: "/var/tmp/flux_{{ flux_version }}_linux_amd64.tar.gz"
+    checksum: "sha256:{{ flux_sha256 }}"
+    mode: "0644"
+
 - name: Install the Flux CLI
-  ansible.builtin.shell: |
-    set -o pipefail
-    curl -s https://fluxcd.io/install.sh | bash
-  args:
-    executable: /bin/bash
+  ansible.builtin.unarchive:
+    src: "/var/tmp/flux_{{ flux_version }}_linux_amd64.tar.gz"
+    dest: /usr/local/bin
+    remote_src: true
+    include: [flux]
+    mode: "0755"
     creates: /usr/local/bin/flux
 
 - name: Install Flux controllers
   ansible.builtin.command: flux install --components-extra=image-reflector-controller,image-automation-controller
   environment:
     KUBECONFIG: "{{ kubeconfig }}"
-  become_user: "{{ lab_user }}"
+  become_user: "{{ user }}"
   args:
-    creates: /home/{{ lab_user }}/.flux-installed
+    creates: /home/{{ user }}/.flux-installed
   changed_when: true
 
 - name: Mark Flux as installed
   ansible.builtin.file:
-    path: "/home/{{ lab_user }}/.flux-installed"
+    path: "/home/{{ user }}/.flux-installed"
     state: touch
-    owner: "{{ lab_user }}"
-    group: "{{ lab_user }}"
+    owner: "{{ user }}"
+    group: "{{ user }}"
     mode: "0644"
   changed_when: false
+
+# Teleport
+
+# Teleport gets a VIP from the Cilium pool.
+# Teleport multiplexes SSH, Kubernetes API, and web traffic on one
+# 443 using ALPN
+- name: Add the Teleport Helm repository
+  kubernetes.core.helm_repository:
+    name: teleport
+    repo_url: https://charts.releases.teleport.dev
+  become_user: "{{ user }}"
+
+- name: Create the Teleport namespace
+  kubernetes.core.k8s:
+    kubeconfig: "{{ kubeconfig }}"
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: teleport
+  become_user: "{{ user }}"
+
+# The wildcard covers Teleport application access.
+# Use dns01
+- name: Request the Teleport TLS certificate
+  kubernetes.core.k8s:
+    kubeconfig: "{{ kubeconfig }}"
+    state: present
+    definition:
+      apiVersion: cert-manager.io/v1
+      kind: Certificate
+      metadata:
+        name: teleport-tls
+        namespace: teleport
+      spec:
+        secretName: teleport-tls
+        issuerRef:
+          name: "{{ acme_issuer }}"
+          kind: ClusterIssuer
+        dnsNames: >-
+          {{ [teleport_cluster_name]
+             + (['*.' + teleport_cluster_name] if acme_solver == 'dns01' else []) }}
+  become_user: "{{ user }}"
+
+- name: Wait for the Teleport certificate
+  ansible.builtin.command: >-
+    kubectl -n teleport wait certificate/teleport-tls
+    --for=condition=Ready --timeout=600s
+  environment:
+    KUBECONFIG: "{{ kubeconfig }}"
+  become_user: "{{ user }}"
+  changed_when: false
+
+- name: Install Teleport
+  kubernetes.core.helm:
+    name: teleport
+    chart_ref: teleport/teleport-cluster
+    chart_version: "{{ teleport_version }}"
+    release_namespace: teleport
+    kubeconfig: "{{ kubeconfig }}"
+    wait: true
+    values:
+      clusterName: "{{ teleport_cluster_name }}"
+      proxyListenerMode: multiplex
+      service:
+        type: LoadBalancer
+      annotations:
+        service:
+          lbipam.cilium.io/ips: "{{ load_balancer_teleport_ip }}"
+      tls:
+        existingSecretName: teleport-tls
+  become_user: "{{ user }}"

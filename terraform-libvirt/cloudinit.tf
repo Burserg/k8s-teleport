@@ -1,12 +1,5 @@
-# One NoCloud seed ISO per node, replacing Proxmox's ciuser/sshkeys/ipconfig0
-# attributes. Same philosophy as before: reachability only — one user, one
-# set of keys, a hostname, an address. Everything else is Ansible's job.
-#
-# 0.9.x split this in two: libvirt_cloudinit_disk only builds the ISO on the
-# machine running terraform (no pool argument any more), and a plain
-# libvirt_volume streams it into the pool. The id is a content checksum, so
-# editing user_data/network_config rebuilds the ISO and (0.9.8) replaces the
-# seed volume.
+# NoCloud seed ISO per node, replacing Proxmox's ciuser/sshkeys/ipconfig0
+# attributes.
 resource "libvirt_cloudinit_disk" "seed" {
   for_each = var.nodes
 

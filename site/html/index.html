@@ -3,36 +3,44 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Peach Cheesecake &mdash; The Lab Kitchen</title>
-  <meta name="description" content="A baked peach cheesecake with a brown-butter graham crust and roasted peach topping.">
+  <title>Peach Cheesecake | The Lab Kitchen</title>
+  <meta name="description" content="A creamy baked peach cheesecake with a graham cracker crust and roasted peach topping. Serves 12.">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <header class="site-header">
-    <p class="kicker">The Lab Kitchen</p>
-    <h1>Peach Cheesecake</h1>
-    <p class="lede">A baked cheesecake on a brown-butter graham crust, finished with
-    roasted peaches. Serves 12. About 90 minutes of work across an afternoon,
-    plus an overnight chill you should not skip.</p>
+    <div class="site-header__inner">
+      <p class="kicker">The Lab Kitchen</p>
+      <h1>Peach <em>Cheesecake</em></h1>
+      <p class="lede">A tall, creamy baked cheesecake with a buttery graham crust and a crown of late-summer roasted peaches.</p>
+      <dl class="recipe-meta">
+        <div><dt>Yield</dt><dd>12 slices</dd></div>
+        <div><dt>Active time</dt><dd>45 minutes</dd></div>
+        <div><dt>Bake</dt><dd>65&ndash;75 min.</dd></div>
+        <div><dt>Chill</dt><dd>8 hours</dd></div>
+      </dl>
+      <a class="jump-link" href="#method">Start baking <span aria-hidden="true">&darr;</span></a>
+    </div>
   </header>
 
   <main>
-    <section aria-labelledby="ingredients">
+    <div class="recipe-layout">
+    <section class="ingredients" aria-labelledby="ingredients">
       <h2 id="ingredients">Ingredients</h2>
 
       <h3>Crust</h3>
       <ul>
-        <li>200 g graham crackers (about 14 sheets), crushed fine</li>
-        <li>85 g unsalted butter, browned and slightly cooled</li>
+        <li>1&frac34; cups graham cracker crumbs (about 14 sheets)</li>
+        <li>6 tbsp unsalted butter, browned and slightly cooled</li>
         <li>2 tbsp granulated sugar</li>
         <li>&frac14; tsp fine sea salt</li>
       </ul>
 
       <h3>Filling</h3>
       <ul>
-        <li>900 g full-fat cream cheese, at room temperature</li>
-        <li>250 g granulated sugar</li>
-        <li>240 g sour cream, at room temperature</li>
+        <li>Four 8-oz packages full-fat cream cheese, at room temperature</li>
+        <li>1 cup granulated sugar</li>
+        <li>&frac34; cup sour cream, at room temperature</li>
         <li>4 large eggs, at room temperature</li>
         <li>2 tsp vanilla extract</li>
         <li>1 tbsp lemon juice</li>
@@ -42,8 +50,8 @@
 
       <h3>Roasted peach topping</h3>
       <ul>
-        <li>4 ripe peaches, halved, pitted, cut into eighths</li>
-        <li>50 g light brown sugar</li>
+        <li>4 cups sliced ripe peaches (about 5 medium)</li>
+        <li>&frac14; cup light brown sugar</li>
         <li>1 tbsp lemon juice</li>
         <li>&frac12; tsp ground cinnamon</li>
         <li>Pinch of salt</li>
@@ -59,8 +67,7 @@
 
         <li><strong>Make the crust.</strong> Stir the crumbs, sugar, and salt into the
         brown butter until it holds together when pressed. Pack it evenly into
-        the bottom of a 23&nbsp;cm springform pan. Bake at 175&nbsp;&deg;C
-        (350&nbsp;&deg;F) for 10 minutes, then cool while you make the filling.</li>
+        the bottom of a 9-inch springform pan. Bake at 350&nbsp;&deg;F for 10 minutes, then cool while you make the filling.</li>
 
         <li><strong>Beat the cream cheese.</strong> Beat the cream cheese on medium until
         completely smooth, scraping the bowl twice. Lumps now are lumps forever.
@@ -71,23 +78,22 @@
         only until each disappears. Overbeating the eggs is how cracks happen.</li>
 
         <li><strong>Bake gently.</strong> Wrap the pan's base in foil and set it in a
-        roasting tray. Pour the filling over the crust, then pour hot water into
-        the tray to come halfway up the pan. Bake at 160&nbsp;&deg;C
-        (325&nbsp;&deg;F) for 60&ndash;70 minutes, until the edges are set and the
+        roasting pan. Pour the filling over the crust, then pour hot water into
+        the pan to come halfway up the springform. Bake at 325&nbsp;&deg;F
+        for 65&ndash;75 minutes, until the edges are set and the
         centre still wobbles like set custard.</li>
 
         <li><strong>Cool slowly.</strong> Turn the oven off, crack the door, and leave
         the cake inside for an hour. Then chill it, uncovered, overnight.</li>
 
         <li><strong>Roast the peaches.</strong> Toss the peaches with the brown sugar,
-        lemon juice, cinnamon, and salt. Roast at 200&nbsp;&deg;C (400&nbsp;&deg;F)
-        for 15&ndash;20 minutes until soft and lightly caramelised. Cool
-        completely.</li>
+        lemon juice, cinnamon, and salt. Roast at 400&nbsp;&deg;F for 15&ndash;20 minutes until soft and lightly caramelized. Cool completely.</li>
 
         <li><strong>Serve.</strong> Release the springform, pile the peaches and their
         syrup over the top, and slice with a hot, dry knife.</li>
       </ol>
     </section>
+    </div>
 
     <section aria-labelledby="notes">
       <h2 id="notes">Notes</h2>
@@ -103,9 +109,7 @@
   </main>
 
   <footer class="site-footer">
-    <p>Served from a hardened Kubernetes cluster; kubeadm, Cilium Gateway
-    API, cert-manager, and Flux. Deployed by an identity that can change this
-    page and nothing else.</p>
+    <p>Served from a Kubernetes cluster with kubeadm, Cilium Gateway API, cert-manager, and Flux.</p>
   </footer>
 </body>
 </html>

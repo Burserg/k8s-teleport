@@ -7,8 +7,8 @@ metadata:
   name: lab-pool
 spec:
   blocks:
-    - start: "{{ lb_ip_start }}"
-      stop: "{{ lb_ip_stop }}"
+    - start: "{{ load_balancer_ip_start }}"
+      stop: "{{ load_balancer_ip_end }}"
 ---
 apiVersion: cilium.io/v2alpha1
 kind: CiliumL2AnnouncementPolicy
@@ -17,7 +17,7 @@ metadata:
 spec:
   # Restrict gARP to the physical NIC.
   interfaces:
-    - {{ lb_interface_regex }}
+    - {{ l2_announcement_interface_regex }}
   loadBalancerIPs: true
   externalIPs: true
   nodeSelector:

@@ -1,0 +1,30 @@
+kind: role
+version: v8
+metadata:
+  name: app-dev
+  description: >-
+    Tenant developer: Kubernetes access to the cheesecake namespace as group
+    app-devs. No SSH and no exec.
+spec:
+  allow:
+    kubernetes_labels:
+      '*': '*'
+    kubernetes_groups:
+      - app-devs
+    kubernetes_resources:
+      - kind: '*'
+        api_group: '*'
+        name: '*'
+        namespace: cheesecake
+        verbs: ['*']
+  deny:
+    kubernetes_resources:
+      - kind: pods
+        api_group: ''
+        name: '*'
+        namespace: '*'
+        verbs:
+          - exec
+          - portforward
+  options:
+    max_session_ttl: 8h0m0s

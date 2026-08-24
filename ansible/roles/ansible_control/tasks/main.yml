@@ -7,20 +7,29 @@
     cache_valid_time: 3600
   when: control_self_hosting | bool
 
+- name: Install kubectl on the control host
+  ansible.builtin.get_url:
+    url: "https://dl.k8s.io/release/v{{ k8s_version }}/bin/linux/{{ control_kubectl_arch }}/kubectl"
+    dest: /usr/local/bin/kubectl
+    checksum: "sha256:https://dl.k8s.io/release/v{{ k8s_version }}/bin/linux/{{ control_kubectl_arch }}/kubectl.sha256"
+    owner: root
+    group: root
+    mode: "0755"
+
 - name: Ensure .ssh exists
   ansible.builtin.file:
-    path: "/home/{{ lab_user }}/.ssh"
+    path: "/home/{{ user }}/.ssh"
     state: directory
-    owner: "{{ lab_user }}"
-    group: "{{ lab_user }}"
+    owner: "{{ user }}"
+    group: "{{ user }}"
     mode: "0700"
 
 - name: Generate keypair
   community.crypto.openssh_keypair:
     path: "{{ control_key_path }}"
     type: "{{ control_key_type }}"
-    owner: "{{ lab_user }}"
-    group: "{{ lab_user }}"
+    owner: "{{ user }}"
+    group: "{{ user }}"
     mode: "0600"
     regenerate: never
   register: _control_key
@@ -31,9 +40,9 @@
 
 - name: Client-side SSH config
   ansible.builtin.copy:
-    dest: "/home/{{ lab_user }}/.ssh/config"
-    owner: "{{ lab_user }}"
-    group: "{{ lab_user }}"
+    dest: "/home/{{ user }}/.ssh/config"
+    owner: "{{ user }}"
+    group: "{{ user }}"
     mode: "0600"
     content: |
       Host *
@@ -44,8 +53,8 @@
   ansible.builtin.file:
     path: "{{ control_workdir }}"
     state: directory
-    owner: "{{ lab_user }}"
-    group: "{{ lab_user }}"
+    owner: "{{ user }}"
+    group: "{{ user }}"
     mode: "0755"
 
 - name: Sync playbooks to control host
@@ -64,7 +73,18 @@
   ansible.builtin.file:
     path: "{{ control_workdir }}"
     state: directory
-    owner: "{{ lab_user }}"
-    group: "{{ lab_user }}"
+    owner: "{{ user }}"
+    group: "{{ user }}"
     recurse: true
+  when: control_self_hosting | bool
+
+- name: Sync RBAC tooling to control host
+  ansible.posix.synchronize:
+    src: "{{ playbook_dir }}/../rbac/"
+    dest: "{{ control_rbac_dir }}/"
+    delete: false
+    rsync_opts:
+      - "--exclude=out"
+  delegate_to: localhost
+  become: false
   when: control_self_hosting | bool

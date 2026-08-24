@@ -1,0 +1,19 @@
+kind: role
+version: v8
+metadata:
+  name: platform-admin
+  description: >-
+    Platform administrator: SSH to all lab nodes as ubuntu and full
+    Kubernetes access, with sessions recorded.
+spec:
+  allow:
+    logins:
+      - ubuntu
+    node_labels:
+      '*': '*'
+    kubernetes_labels:
+      '*': '*'
+    kubernetes_groups:
+      - system:masters
+  options:
+    max_session_ttl: 8h0m0s

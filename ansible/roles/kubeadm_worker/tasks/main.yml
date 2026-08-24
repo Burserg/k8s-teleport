@@ -27,16 +27,16 @@
     kubectl label node {{ inventory_hostname }}
     node-role.kubernetes.io/worker=worker --overwrite
   delegate_to: "{{ groups['control'][0] }}"
-  become_user: "{{ lab_user }}"
+  become_user: "{{ user }}"
   environment:
-    KUBECONFIG: "/home/{{ lab_user }}/.kube/config"
+    KUBECONFIG: "/home/{{ user }}/.kube/config"
   changed_when: true
 
 - name: Wait for the node to become Ready
   ansible.builtin.command: >-
     kubectl wait --for=condition=Ready node/{{ inventory_hostname }} --timeout=300s
   delegate_to: "{{ groups['control'][0] }}"
-  become_user: "{{ lab_user }}"
+  become_user: "{{ user }}"
   environment:
-    KUBECONFIG: "/home/{{ lab_user }}/.kube/config"
+    KUBECONFIG: "/home/{{ user }}/.kube/config"
   changed_when: false

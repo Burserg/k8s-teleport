@@ -28,16 +28,3 @@ spec:
         - ports:
             - port: "8080"
               protocol: TCP
-  egress:
-    # DNS only. A static site needs nothing else outbound.
-    - toEndpoints:
-        - matchLabels:
-            io.kubernetes.pod.namespace: kube-system
-            k8s-app: kube-dns
-      toPorts:
-        - ports:
-            - port: "53"
-              protocol: UDP
-          rules:
-            dns:
-              - matchPattern: "*"

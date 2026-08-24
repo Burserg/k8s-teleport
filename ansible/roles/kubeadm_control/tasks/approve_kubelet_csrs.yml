@@ -1,0 +1,24 @@
+---
+# Kubelets request serving certificates only after their nodes join the cluster.
+- name: List pending kubelet serving CSRs
+  ansible.builtin.shell: >-
+    set -o pipefail;
+    kubectl get csr -o json | jq -r '.items[]
+    | select(.spec.signerName=="kubernetes.io/kubelet-serving")
+    | select(.status.condition == null) | .metadata.name'
+  args:
+    executable: /bin/bash
+  environment:
+    KUBECONFIG: "{{ kubeconfig }}"
+  become_user: "{{ user }}"
+  register: _pending_csrs
+  changed_when: false
+  failed_when: false
+
+- name: Approve kubelet serving CSRs
+  ansible.builtin.command: "kubectl certificate approve {{ item }}"
+  environment:
+    KUBECONFIG: "{{ kubeconfig }}"
+  become_user: "{{ user }}"
+  loop: "{{ _pending_csrs.stdout_lines | default([]) }}"
+  changed_when: true

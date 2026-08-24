@@ -1,0 +1,27 @@
+# Copy to terraform.tfvars. The Google provider uses Application Default
+# Credentials, for example: gcloud auth application-default login.
+project_id = "my-gcp-project"
+region     = "us-central1"
+zone       = "us-central1-a"
+
+# Only these source networks may SSH to the bastion.
+allowed_admin_ssh_cidrs = ["203.0.113.24/32"]
+
+# A custom VPC CIDR is safe when it does not overlap a connected VPC,
+# on-premises network, VPN, or VPC peering range.
+subnet_cidr = "10.75.30.0/24"
+
+ci_user = "ubuntu"
+admin_ssh_public_keys = [
+  "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA... admin@workstation",
+]
+
+# This stack is intentionally x86_64. Override only with a compatible image.
+source_image = "projects/ubuntu-os-cloud/global/images/family/ubuntu-2604-lts-amd64"
+
+nodes = {
+  "jump-01" = { cores = 2, memory = 4096, role = "jump", disk_size_gb = 30 }
+  "ctrl-01" = { cores = 2, memory = 4096, role = "control", etcd_disk_size_gb = 20 }
+  "wrkr-01" = { cores = 4, memory = 8192, role = "worker" }
+  "wrkr-02" = { cores = 4, memory = 8192, role = "worker" }
+}

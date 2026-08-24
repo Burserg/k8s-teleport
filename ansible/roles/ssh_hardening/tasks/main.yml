@@ -18,7 +18,7 @@
 
 - name: Install hardening drop file
   ansible.builtin.template:
-    src: 10_hardening.conf.j2
+    src: 10-hardening.conf.j2
     dest: /etc/ssh/sshd_config.d/10-hardening.conf
     owner: root
     group: root

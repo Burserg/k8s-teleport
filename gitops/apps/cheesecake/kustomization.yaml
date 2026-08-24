@@ -5,3 +5,4 @@ namespace: cheesecake
 resources:
   - deployment.yaml
   - httproute.yaml
+  - pdb.yaml

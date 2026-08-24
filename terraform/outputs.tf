@@ -15,7 +15,7 @@ output "jump_host" {
 output "next_steps" {
   value = <<-EOT
 
-    Inventory written to ansible/inventory/hosts.ini
+    Inventory written to ansible/Inventory/hosts.ini
     Kubernetes nodes are reachable only through the bastion.
 
       cd ../ansible

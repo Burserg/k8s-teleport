@@ -5,7 +5,7 @@
 
 user: "{{ansible_user | default('ubuntu') }}"
 kubeconfig: "/home/{{ user }}/.kube/config"
-
+lab_domain: "lab.local"
 ###
 # SSH Policy
 ###
@@ -25,7 +25,13 @@ pod_subnet: "10.244.0.0/16"
 service_subnet: "10.96.0.0/12"
 control_plane_ip: "{{ hostvars[groups['control'][0]].cluster_ip }}"
 control_plane_endpoint: "{{ groups['control'][0] }}.{{ lab_domain }}"
+api_cert_sans:
+  - "{{ control_plane_endpoint }}"
+  - "{{ control_plane_ip }}"
+etcd_heartbeat_interval: "100"
+etcd_election_timeout: "1000"
 helm_version: "3.16.3"
+helm_sha256: "f5355c79190951eed23c5432a3b920e071f4c00a64f75e077de0dd4cb7b294ea"
 
 ###
 # CNI / Gateway Config
@@ -34,15 +40,27 @@ cilium_version: "1.20.1"
 gateway_api_version: "v1.6.1"
 cilium_wireguard: true
 cilium_cli_version: "0.19.7"
+cilium_cli_sha256: "cd15e0983bf0acc7946cd05d453d1e58376ea92dec2642e745212df2b07d8852"
+cilium_client_qps: 10
+cilium_client_burst: 30
+network_profile: l2
+l2_announcement_interface_regex: "^(eth|eno|enp|br).*"
+
+# Optional management-network routes. Can be empty if not used.
+mgmt_interface: ""
+mgmt_static_routes: []
 
 ###
 # Storage
 ###
 local_path_manifest: "https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.30/deploy/local-path-storage.yaml"
-load_balancer_ip_start: "10.75.30.100"
-load_balancer_ip_end: "10.75.30.150"
-load_balancer_ingress_ip: "10.75.30.100"
-load_balancer_teleport_ip: "10.75.30.101"
+load_balancer_ip_start: "192.168.2.70"
+load_balancer_ip_end: "192.168.2.127"
+load_balancer_ingress_ip: "192.168.2.71"
+load_balancer_teleport_ip: "192.168.2.72"
+
+flux_version: "2.9.3"
+flux_sha256: "eae4e8608c0ade2bf4e8dec1669dbb6b0c28b5822b252d97feccfb4fb1181fd2"
 
 ###
 # TLS / Certs

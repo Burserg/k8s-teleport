@@ -6,7 +6,7 @@ on:
   workflow_dispatch: {}
 
 permissions:
-  contents: read
+  contents: write
   packages: write
 
 jobs:
@@ -22,11 +22,20 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - uses: docker/build-push-action@v7.3.0
+        id: build
         with:
           context: site
           push: true
           tags: |
             ghcr.io/${{ env.OWNER_LC }}/cheesecake-site:latest
             ghcr.io/${{ env.OWNER_LC }}/cheesecake-site:${{ github.sha }}
-      - name: Print the tag to pin
-        run: echo "Pin gitops/apps/cheesecake/deployment.yaml to ghcr.io/${OWNER_LC}/cheesecake-site:${GITHUB_SHA}"
+      - name: Record the build revision for Flux
+        run: |
+          sed -i "s#app.devbycory.com/image-build: .*#app.devbycory.com/image-build: ${GITHUB_SHA}#" gitops/apps/cheesecake/deployment.yaml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git diff --quiet -- gitops/apps/cheesecake/deployment.yaml || {
+            git add gitops/apps/cheesecake/deployment.yaml
+            git commit -m "chore(site): deploy ${GITHUB_SHA}"
+            git push
+          }

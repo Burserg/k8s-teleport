@@ -11,7 +11,7 @@ output "jump_host" {
 output "next_steps" {
   value = <<-EOT
 
-    Inventory written to ansible/inventory/hosts.ini
+    Inventory written to ansible/Inventory/hosts.ini
 
       cd ../ansible
       ansible-galaxy collection install -r requirements.yml

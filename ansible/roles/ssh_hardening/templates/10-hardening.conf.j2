@@ -6,5 +6,5 @@ PubKeyAuthentication yes
 PasswordAuthentication no
 KbdInteractiveAuthentication no
 {% endif %}
-PermitRootLogin {{ ssh_permit_root_login }}
+PermitRootLogin {{ 'yes' if ssh_permit_root_login | bool else 'no' }}
 PermitEmptyPasswords no

@@ -5,7 +5,7 @@
 #
 #   ./make-user.sh alice app-devs
 #
-# Run as an admin. Produces ./out/<user>.kubeconfig, Do not commit these.
+# Run as an admin. Produces ./out/<user>/<user>.kubeconfig. Do not commit these.
 #
 # Kubernetes has no User object. The identity lives entirely in the
 # certificate: CN becomes the username, O becomes the group. The cluster
@@ -39,7 +39,7 @@ Options (override positionals if both are given):
   -n, --namespace NS    Default namespace in the kubeconfig context.
                         Default: cheesecake.
   -o, --out-dir DIR     Where to write key/cert/kubeconfig.
-                        Default: ./out next to this script.
+                        Default: ./out/<user> next to this script.
   -h, --help            Show this help and exit.
 
 Examples:
@@ -70,10 +70,8 @@ API_SERVER=""
 NAMESPACE="cheesecake"
 OUT=""
 
-# Short lived. Requests 24 hours. leaked certificate is valid until it expires.
-# the only real revocation is rotating the cluster CA which invalidates everyone.
-# Short lifetimes are the mitigation.
-# Note this is a REQUEST; the signer may cap it.
+# Short lived. Requests 24 hours. Leaked certificate is valid until it expires.
+# the only real revocation is rotating the cluster CA, not ideal.
 EXPIRATION_SECONDS="${EXPIRATION_SECONDS:-86400}"
 
 POSITIONAL=()
@@ -108,7 +106,7 @@ if [[ -z "${API_SERVER}" ]]; then
   [[ -n "${API_SERVER}" ]] || die "could not determine the API server from the current context; pass -s/--server"
 fi
 
-OUT="${OUT:-$(dirname "$0")/out}"
+OUT="${OUT:-$(dirname "$0")/out/${USER_NAME}}"
 mkdir -p "$OUT"
 chmod 700 "$OUT"
 

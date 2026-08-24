@@ -1,5 +1,9 @@
 ---
 control_self_hosting: true
 control_key_type: ed25519
-control_key_path: "/home/{{ lab_user }}/.ssh/id_ed25519"
-control_workdir: "/home/{{ lab_user }}/lab"   # on the bastion
+control_key_path: "/home/{{ user }}/.ssh/id_ed25519"
+control_workdir: "/home/{{ user }}/lab"   # on the bastion
+control_kubectl_arch: amd64
+control_kubeconfig: "/home/{{ user }}/.kube/config"
+control_rbac_dir: "{{ control_workdir }}/rbac"
+control_rbac_admin_kubeconfig: "{{ control_rbac_dir }}/out/admin/admin.kubeconfig"

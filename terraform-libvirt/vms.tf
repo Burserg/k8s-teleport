@@ -20,7 +20,7 @@ resource "libvirt_domain" "node" {
   cpu = {
     mode = var.cpu_mode
   }
-  
+
   features = {
     acpi = true
     apic = {}

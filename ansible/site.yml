@@ -26,9 +26,9 @@
   vars:
     _controller: "{{ (groups['jump'] | default([]) | first) | default(groups['control'][0]) }}"
   tasks:
-    - name: Authorize the controller key for {{ lab_user }}
+    - name: Authorize the controller key for {{ user }}
       ansible.posix.authorized_key:
-        user: "{{ lab_user }}"
+        user: "{{ user }}"
         key: "{{ hostvars[_controller]['control_public_key'] }}"
         state: present
 
@@ -45,11 +45,32 @@
   roles:
     - kubeadm_control
 
+- name: Distribute the admin kubeconfig after control-plane initialization
+  hosts: control
+  become: true
+  vars:
+    controller_host: "{{ (groups['jump'] | default([]) | first) | default(groups['control'][0]) }}"
+  tasks:
+    - name: Transfer kubeconfig and RBAC administration data
+      ansible.builtin.include_role:
+        name: ansible_control
+        tasks_from: kubeconfig
+      run_once: true
+
 - name: Join the workers
   hosts: workers
   become: true
   roles:
     - kubeadm_worker
+
+- name: Approve worker serving certificates
+  hosts: control
+  become: true
+  tasks:
+    - name: Approve pending worker serving CSRs
+      ansible.builtin.include_role:
+        name: kubeadm_control
+        tasks_from: approve_kubelet_csrs
 
 - name: Platform components
   hosts: control

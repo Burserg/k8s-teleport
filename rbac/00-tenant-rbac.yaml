@@ -7,7 +7,7 @@ metadata:
     tenant: app-devs
     gateway-access: "true"
     pod-security.kubernetes.io/enforce: restricted
-    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/enforce-version: v1.36
     pod-security.kubernetes.io/warn: restricted
     pod-security.kubernetes.io/audit: restricted
 
@@ -19,10 +19,16 @@ metadata:
   namespace: cheesecake
 rules:
   - apiGroups: [""]
-    resources: [pods, services, configmaps, secrets, persistentvolumeclaims, events]
+    resources: [pods]
+    verbs: [get, list, watch]
+  - apiGroups: [""]
+    resources: [services]
     verbs: [get, list, watch, create, update, patch, delete]
   - apiGroups: [apps]
-    resources: [deployments, replicasets, statefulsets]
+    resources: [deployments]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [policy]
+    resources: [poddisruptionbudgets]
     verbs: [get, list, watch, create, update, patch, delete]
   - apiGroups: [gateway.networking.k8s.io]
     resources: [httproutes]
@@ -30,9 +36,6 @@ rules:
   - apiGroups: [gateway.networking.k8s.io]
     resources: [gateways]
     verbs: [get, list, watch]     # read-only: needed to see attachment status
-  - apiGroups: [networking.k8s.io]
-    resources: [networkpolicies]
-    verbs: [get, list, watch, create, update, patch, delete]
   - apiGroups: [""]
     resources: [pods/log]
     verbs: [get, list]

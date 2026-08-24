@@ -16,7 +16,7 @@ spec:
       labels:
         app: cheesecake
       annotations:
-        app.devbycory.com/image-build: initial
+        app.devbycory.com/image-build: e475a37cf2a6ca7442a3cfc6653ecdb470625c8d
     spec:
       automountServiceAccountToken: false
       securityContext:

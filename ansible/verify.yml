@@ -44,7 +44,14 @@
       changed_when: false
       failed_when: false
       delegate_to: "{{ 'localhost' if item.kubeconfig is defined else inventory_hostname }}"
-      become: "{{ item.kubeconfig is not defined }}"
+      # kubectl, flux, and the control-host kubeconfig belong to the deployment
+      # user. Verification does not need, and must not prompt for, sudo.
+      become: false
+      vars:
+        # Switching delegation inside this loop otherwise carries the macOS
+        # Python path back to ctrl-01. Ubuntu exposes Python as /usr/bin/python3.
+        ansible_python_interpreter: >-
+          {{ ansible_playbook_python if item.kubeconfig is defined else '/usr/bin/python3' }}
       loop:
         - id: nodes
           req: "Deployed Kubernetes cluster using kubeadm"
@@ -91,12 +98,6 @@
             Gateway is configured with an address. Cilium serves
             Gateway API directly.
           cmd: kubectl -n gateway-infra get gateway -o wide
-        - id: gateway_role_split
-          req: "RBAC for users to maintain an application in a namespace"
-          proves: >-
-            The tenant may manage HTTPRoutes but not Gateways, so it controls
-            routing to its own service and nothing about TLS termination.
-          cmd: kubectl auth can-i --list -n cheesecake
         - id: csr
           req: "Configure K8s RBAC to use CSRs to get access to the K8s API"
           proves: "The CSR exists, was Approved and Issued by the cluster signer."
@@ -111,30 +112,12 @@
           req: "RBAC for users to maintain an application in a namespace"
           proves: "Role is namespaced; RoleBinding targets the group"
           cmd: kubectl -n cheesecake get role,rolebinding -o wide
-        - id: whoami
-          req: "Deployed Nginx application through user access"
-          proves: "The certificate authenticates as alice in group app-devs."
-          cmd: kubectl auth whoami
-          kubeconfig: "{{ alice_kubeconfig }}"
-        - id: can_i_allowed
-          req: "User has role access to maintain the application"
-          proves: "alice may manage workloads inside her namespace."
-          cmd: kubectl auth can-i --list -n cheesecake
-          kubeconfig: "{{ alice_kubeconfig }}"
-        - id: can_i_denied_nodes
-          req: "RBAC boundary holds"
-          proves: "Forbidden at cluster scope."
-          cmd: kubectl get nodes
-          kubeconfig: "{{ alice_kubeconfig }}"
-        - id: can_i_denied_ns
-          req: "RBAC boundary holds"
-          proves: "No access to other namespaces."
-          cmd: kubectl -n kube-system get secrets
-          kubeconfig: "{{ alice_kubeconfig }}"
         - id: flux
           req: "Deploy Nginx Application using GitOps"
-          proves: "Flux updated the app from Git; source and revision shown."
-          cmd: flux get all -A
+          proves: "Flux reports its source and the tenant Kustomization is Ready."
+          cmd: >-
+            bash -lc "flux get all -A && kubectl -n cheesecake wait
+            kustomization/cheesecake-app --for=condition=Ready --timeout=15s"
         - id: flux_impersonation
           req: "Deployed through user access and GitOps"
           proves: >-
@@ -145,18 +128,23 @@
             -o jsonpath='{.spec.serviceAccountName}{"\n"}'
         - id: app_pods
           req: "Static Nginx site deployed on the cluster"
-          proves: "Replicas running and spread across workers."
-          cmd: kubectl -n cheesecake get pods -o wide
+          proves: "The Deployment rolls out successfully and its replicas are shown."
+          cmd: >-
+            bash -lc "kubectl -n cheesecake rollout status deployment/cheesecake
+            --timeout=30s && kubectl -n cheesecake get pods -o wide"
         - id: app_content
           req: "On the Nginx site include a recipe for peach cheesecake"
           proves: "The served page contains the recipe."
           cmd: >-
-            bash -lc "kubectl -n cheesecake exec deploy/cheesecake --
+            bash -lc "set -o pipefail; kubectl -n cheesecake exec deploy/cheesecake --
             curl -s localhost:8080 | grep -iE 'peach|cheesecake|cream cheese' | head -20"
         - id: cert
           req: "Use Cert Manager for Issuing SSL certs for Nginx site"
           proves: "Certificate is Ready, issued by the ClusterIssuer."
-          cmd: kubectl -n gateway-infra get certificate,certificaterequest -o wide
+          cmd: >-
+            bash -lc "kubectl -n gateway-infra wait certificate/lab-gateway-tls
+            --for=condition=Ready --timeout=30s && kubectl -n gateway-infra get
+            certificate,certificaterequest -o wide"
         - id: cert_detail
           req: "Use Cert Manager for Issuing SSL certs"
           proves: "Issuer, dates, and SANs on the certificate cert-manager produced."
@@ -166,11 +154,11 @@
             | openssl x509 -noout -issuer -subject -dates -ext subjectAltName"
         - id: tls_handshake
           req: "The Nginx site must be reachable from your web browser"
-          proves: "End-to-end HTTPS: TLS version, cipher, and served content."
+          proves: "End-to-end HTTPS returns 2xx and validates its certificate chain."
           cmd: >-
-            bash -lc "curl -sS -o /dev/null -w 'HTTP %{http_code}  TLS %{ssl_verify_result}\\n'
+            bash -lc "curl --fail -sS -o /dev/null -w 'HTTP %{http_code}  TLS %{ssl_verify_result}\\n'
             --resolve {{ app_hostname }}:443:{{ load_balancer_ingress_ip }}
-            -k https://{{ app_hostname }}/"
+            https://{{ app_hostname }}/"
         - id: teleport
           req: "Deploy Teleport on your Kubernetes Cluster"
           proves: "Teleport pods running with their own LoadBalancer address."
@@ -190,6 +178,42 @@
           cmd: >-
             bash -lc "sshd -T | grep -E
             '^(permitrootlogin|passwordauthentication|kbdinteractiveauthentication|pubkeyauthentication)'"
+        # Keep delegated localhost checks last. A single loop that switches
+        # from localhost back to the control host leaks the local interpreter
+        # and kubeconfig context into subsequent remote commands.
+        - id: gateway_role_split
+          req: "RBAC for users to maintain an application in a namespace"
+          proves: >-
+            The tenant may manage HTTPRoutes but not Gateways, so it controls
+            routing to its own service and nothing about TLS termination.
+          cmd: >-
+            bash -lc "allowed=$(kubectl auth can-i create httproutes.gateway.networking.k8s.io
+            -n cheesecake); denied=$(kubectl auth can-i create gateways.gateway.networking.k8s.io
+            -n cheesecake); printf 'create httproutes: %s\\ncreate gateways: %s\\n' \"$allowed\"
+            \"$denied\"; test \"$allowed\" = yes && test \"$denied\" = no"
+          kubeconfig: "{{ alice_kubeconfig }}"
+        - id: whoami
+          req: "Deployed Nginx application through user access"
+          proves: "The certificate authenticates as alice in group app-devs."
+          cmd: kubectl auth whoami
+          kubeconfig: "{{ alice_kubeconfig }}"
+        - id: can_i_allowed
+          req: "User has role access to maintain the application"
+          proves: "alice may manage workloads inside her namespace."
+          cmd: kubectl auth can-i --list -n cheesecake
+          kubeconfig: "{{ alice_kubeconfig }}"
+        - id: can_i_denied_nodes
+          req: "RBAC boundary holds"
+          proves: "Forbidden at cluster scope."
+          cmd: kubectl get nodes
+          kubeconfig: "{{ alice_kubeconfig }}"
+          expected_rc: 1
+        - id: can_i_denied_ns
+          req: "RBAC boundary holds"
+          proves: "No access to other namespaces."
+          cmd: kubectl -n kube-system get secrets
+          kubeconfig: "{{ alice_kubeconfig }}"
+          expected_rc: 1
       loop_control:
         label: "{{ item.id }}"
 
@@ -214,6 +238,22 @@
 
           **What this shows:** {{ r.item.proves }}
 
+          **Expected exit status:** {{ r.item.expected_rc | default(0) }}
+
+          **Actual exit status:** {{ r.rc | default('not run') }}
+
+          **Result:** {{ 'passed' if (r.rc | default(-1) | int) == (r.item.expected_rc | default(0) | int) else 'failed' }}
+
+          {% if r.msg | default('') | trim | length > 0 and (r.rc | default(-1) | int) != (r.item.expected_rc | default(0) | int) %}
+          **Ansible result:** {{ r.msg | trim }}
+
+          {% endif %}
+
+          {% if r.skipped | default(false) %}
+          **Execution status:** skipped
+
+          {% endif %}
+
           ```console
           $ {{ r.item.cmd | trim }}
           {{ (r.stdout | default('')) | trim }}
@@ -231,13 +271,13 @@
           | --- | --- |
           | Kubeadm cluster, 1 control + 2 workers | 1, 2 |
           | Standard Kubernetes (not MiniKube/KinD) | 2 |
-          | Nginx deployed through user access | 10, 11, 17 |
-          | RBAC via Certificate Signing Requests | 8, 9, 10 |
-          | Peach cheesecake recipe on the site | 18 |
-          | Cert Manager issuing SSL certs | 19, 20 |
-          | Site reachable from a web browser | 7, 21 |
-          | GitOps deployment (Flux CD) | 15, 16 |
-          | Teleport deployed | 22 |
+          | Nginx deployed through user access | 14, 24, 25 |
+          | RBAC via Certificate Signing Requests | 9, 10, 24 |
+          | Peach cheesecake recipe on the site | 15 |
+          | Cert Manager issuing SSL certs | 16, 17 |
+          | Site reachable from a web browser | 8, 18 |
+          | GitOps deployment (Flux CD) | 12, 13 |
+          | Teleport deployed | 19 |
       delegate_to: localhost
       become: false
 

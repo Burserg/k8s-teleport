@@ -27,6 +27,11 @@ rules:
   - apiGroups: [apps]
     resources: [deployments]
     verbs: [get, list, watch, create, update, patch, delete]
+  # Flux health checks follow a Deployment to its ReplicaSets. The tenant can
+  # observe those derived resources but cannot modify them directly.
+  - apiGroups: [apps]
+    resources: [replicasets]
+    verbs: [get, list, watch]
   - apiGroups: [policy]
     resources: [poddisruptionbudgets]
     verbs: [get, list, watch, create, update, patch, delete]

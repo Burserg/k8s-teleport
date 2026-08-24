@@ -33,6 +33,9 @@ Options (override positionals if both are given):
   -u, --user NAME       Username (CN).
   -g, --group NAME      Group (O).
   -s, --server URL      API server URL for the kubeconfig.
+  -t, --tls-server-name NAME
+                        TLS server name for the kubeconfig. Use the control
+                        plane's certificate SAN when URL is an SSH tunnel.
   -e, --expiration SEC  Requested certificate lifetime in seconds.
                         Default: 86400 (24h), or $EXPIRATION_SECONDS if set.
                         This is a REQUEST; the signer may cap it.
@@ -67,6 +70,7 @@ die() {
 USER_NAME=""
 GROUP=""
 API_SERVER=""
+TLS_SERVER_NAME="${TLS_SERVER_NAME:-}"
 NAMESPACE="cheesecake"
 OUT=""
 
@@ -80,6 +84,7 @@ while [[ $# -gt 0 ]]; do
     -u|--user)       USER_NAME="${2:?$1 requires a value}"; shift 2 ;;
     -g|--group)      GROUP="${2:?$1 requires a value}"; shift 2 ;;
     -s|--server)     API_SERVER="${2:?$1 requires a value}"; shift 2 ;;
+    -t|--tls-server-name) TLS_SERVER_NAME="${2:?$1 requires a value}"; shift 2 ;;
     -e|--expiration) EXPIRATION_SECONDS="${2:?$1 requires a value}"; shift 2 ;;
     -n|--namespace)  NAMESPACE="${2:?$1 requires a value}"; shift 2 ;;
     -o|--out-dir)    OUT="${2:?$1 requires a value}"; shift 2 ;;
@@ -168,10 +173,16 @@ kubectl config view --raw --minify --flatten \
 
 KUBECONFIG_OUT="${OUT}/${USER_NAME}.kubeconfig"
 
+TLS_SERVER_NAME_ARGS=()
+if [[ -n "${TLS_SERVER_NAME}" ]]; then
+  TLS_SERVER_NAME_ARGS=(--tls-server-name "${TLS_SERVER_NAME}")
+fi
+
 kubectl --kubeconfig="${KUBECONFIG_OUT}" config set-cluster lab \
   --server="${API_SERVER}" \
   --certificate-authority="${OUT}/ca.crt" \
-  --embed-certs=true
+  --embed-certs=true \
+  "${TLS_SERVER_NAME_ARGS[@]}"
 
 kubectl --kubeconfig="${KUBECONFIG_OUT}" config set-credentials "${USER_NAME}" \
   --client-certificate="${OUT}/${USER_NAME}.crt" \

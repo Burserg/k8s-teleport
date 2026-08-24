@@ -27,6 +27,11 @@ ${name} ansible_host=${n.cluster} cluster_ip=${n.cluster}
 control
 workers
 
+# Select libvirt-specific Ansible values without affecting the Proxmox or GCP
+# inventories.
+[libvirt:children]
+lab
+
 # Everything Ansible manages, including the bastion. Base hardening applies
 # here; Kubernetes roles apply only to [lab].
 [managed:children]

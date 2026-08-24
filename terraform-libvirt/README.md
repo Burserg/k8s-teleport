@@ -1,9 +1,9 @@
 # Terraform on the libvirt/QEMU host (Arch Linux)
 
-Replaces the Proxmox config in `../terraform/` (kept, state included, so the
-old VMs can still be destroyed from there). Network plan and Cilium pool live
-in `terraform.tfvars` and `../ansible/group_vars/all.yml` — the two must
-agree.
+This configuration sits beside `../terraform-proxmox/`. Keep the Proxmox state
+there so its old VMs can still be destroyed from that directory. Set the
+network plan and Cilium pool in `terraform.tfvars` and
+`../ansible/group_vars/all.yml`. They must agree.
 
 ## One-time host prep (Arch)
 
@@ -14,8 +14,8 @@ this is verification rather than installation.
 
 ```bash
 pacman -S --needed qemu-base libvirt dnsmasq
-# qemu-base is the headless build; qemu-full only if you also want GUI/SPICE.
-# dnsmasq is only needed if you ever use a libvirt NAT network; the lab uses
+# qemu-base is the headless build. Install qemu-full only for GUI/SPICE.
+# dnsmasq is only needed for a libvirt NAT network. The lab uses
 # a host bridge instead.
 ```
 
@@ -41,7 +41,7 @@ Check: `test -S /var/run/libvirt/libvirt-sock && echo ok`
 ### Unprivileged access for the Terraform SSH user
 
 The Arch libvirt package ships a polkit rule granting the `libvirt` group
-full access — no sudo, no root SSH:
+full access. No sudo or root SSH:
 
 ```bash
 usermod -aG libvirt <ssh-user>
@@ -49,8 +49,8 @@ usermod -aG libvirt <ssh-user>
 virsh -c qemu+ssh://<ssh-user>@<host>/system list --all
 ```
 
-That `virsh -c` line is the exact preflight for `tofu plan` — if it works,
-the provider connects.
+That `virsh -c` command is the preflight for `tofu plan`. If it works, the
+provider connects.
 
 ### Storage pool
 
@@ -63,9 +63,9 @@ virsh pool-build default && virsh pool-start default && virsh pool-autostart def
 
 ### Bridge (systemd-networkd)
 
-The VMs need a bridge enslaving the physical NIC so they appear directly on
-192.168.2.0/24 — Cilium's L2 announcements are link-local and never cross
-libvirt's NAT (`virbr0`). Substitute your NIC name from `ip -br link`:
+The VMs need a bridge that enslaves the physical NIC, so they appear directly
+on `192.168.2.0/24`. Cilium's L2 announcements are link-local and do not cross
+libvirt NAT on `virbr0`. Get the NIC name with `ip -br link`:
 
 ```ini
 # /etc/systemd/network/10-br0.netdev
@@ -98,9 +98,9 @@ DNS=192.168.2.1
 systemctl enable --now systemd-networkd
 ```
 
-The host's IP moves onto the bridge — do this from console/IPMI, not over
-the SSH session you are about to drop. If the host uses NetworkManager
-instead, build the same shape with `nmcli con add type bridge ...`.
+The host's IP moves onto the bridge. Do this from console or IPMI, because the
+SSH session will drop. A NetworkManager host needs the same layout through
+`nmcli con add type bridge ...`.
 
 ### Router
 
@@ -111,7 +111,7 @@ router's DHCP range.
 
 ```bash
 # fill in libvirt_uri (and network_bridge if not br0) in terraform.tfvars
-make init && make plan && make apply   # from the repo root; TF_DIR points here
+make init && make plan && make apply   # from the repo root, TF_DIR points here
 ```
 
 Apply writes `../ansible/Inventory/hosts.ini`, then the Ansible flow is

@@ -1,0 +1,85 @@
+---
+- name: Issue a Kubernetes user credential through the CSR API
+  hosts: control
+  gather_facts: false
+  become: false
+  vars:
+    rbac_user: alice
+    rbac_group: app-devs
+    control_rbac_dir: "/home/{{ user }}/lab/rbac"
+    control_kubeconfig: "/home/{{ user }}/.kube/config"
+    local_rbac_dir: "{{ playbook_dir }}/../rbac"
+    rbac_api_server: "https://{{ cluster_ip }}:6443"
+    rbac_tls_server_name: ""
+  tasks:
+    - name: Create the control-host RBAC working directory
+      ansible.builtin.file:
+        path: "{{ control_rbac_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Synchronize RBAC tooling to the control host
+      ansible.posix.synchronize:
+        src: "{{ local_rbac_dir }}/"
+        dest: "{{ control_rbac_dir }}/"
+        delete: false
+        rsync_opts:
+          - "--exclude=out"
+      delegate_to: localhost
+
+    - name: Issue {{ rbac_user }} through a CertificateSigningRequest
+      ansible.builtin.command:
+        cmd: >-
+          {{ control_rbac_dir }}/make-user.sh {{ rbac_user }} {{ rbac_group }}
+          {{ rbac_api_server }}
+      environment:
+        KUBECONFIG: "{{ control_kubeconfig }}"
+        TLS_SERVER_NAME: "{{ rbac_tls_server_name }}"
+      changed_when: true
+
+    - name: Create the local user credential directory
+      ansible.builtin.file:
+        path: "{{ local_rbac_dir }}/out/{{ rbac_user }}"
+        state: directory
+        mode: "0700"
+      delegate_to: localhost
+
+    - name: Fetch the issued user credential bundle
+      ansible.builtin.fetch:
+        src: "{{ control_rbac_dir }}/out/{{ rbac_user }}/{{ item }}"
+        dest: "{{ local_rbac_dir }}/out/{{ rbac_user }}/"
+        flat: true
+      loop:
+        - "{{ rbac_user }}.kubeconfig"
+        - "{{ rbac_user }}.key"
+        - "{{ rbac_user }}.csr"
+        - "{{ rbac_user }}.crt"
+        - ca.crt
+
+    - name: Restrict local user credential files
+      ansible.builtin.file:
+        path: "{{ local_rbac_dir }}/out/{{ rbac_user }}/{{ item }}"
+        state: file
+        mode: "0600"
+      delegate_to: localhost
+      loop:
+        - "{{ rbac_user }}.kubeconfig"
+        - "{{ rbac_user }}.key"
+        - "{{ rbac_user }}.csr"
+        - "{{ rbac_user }}.crt"
+        - ca.crt
+
+    - name: Verify the issued CSR
+      ansible.builtin.command:
+        cmd: kubectl get csr {{ rbac_user }} -o wide
+      environment:
+        KUBECONFIG: "{{ control_kubeconfig }}"
+      changed_when: false
+
+    - name: Verify the refreshed local user credential
+      ansible.builtin.command:
+        cmd: kubectl auth whoami
+      environment:
+        KUBECONFIG: "{{ local_rbac_dir }}/out/{{ rbac_user }}/{{ rbac_user }}.kubeconfig"
+      delegate_to: localhost
+      changed_when: false

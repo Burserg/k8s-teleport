@@ -1,0 +1,9 @@
+---
+kind: user
+version: v2
+metadata:
+  name: dev-user
+spec:
+  roles: [access, lab-developer]
+  traits:
+    logins: [dev-user]

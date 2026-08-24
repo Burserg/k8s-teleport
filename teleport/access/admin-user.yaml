@@ -1,0 +1,9 @@
+---
+kind: user
+version: v2
+metadata:
+  name: admin-user
+spec:
+  roles: [access, editor, lab-admin]
+  traits:
+    logins: [ubuntu]

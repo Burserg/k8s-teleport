@@ -1,11 +1,16 @@
 # Copy to terraform.tfvars. The Google provider uses Application Default
 # Credentials, for example: gcloud auth application-default login.
-project_id = "my-gcp-project"
-region     = "us-central1"
-zone       = "us-central1-a"
+project_id  = "my-gcp-project"
+region      = "us-central1"
+zone        = "us-central1-a"
+name_prefix = "k8s-teleport"
 
 # Only these source networks may SSH to the bastion.
 allowed_admin_ssh_cidrs = ["203.0.113.24/32"]
+
+# Public client networks allowed to reach the external Gateway LoadBalancer.
+# Keep 0.0.0.0/0 only when the site is intentionally public.
+allowed_web_cidrs = ["0.0.0.0/0"]
 
 # A custom VPC CIDR is safe when it does not overlap a connected VPC,
 # on-premises network, VPN, or VPC peering range.

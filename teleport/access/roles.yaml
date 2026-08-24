@@ -1,0 +1,24 @@
+---
+kind: role
+version: v7
+metadata:
+  name: lab-admin
+spec:
+  allow:
+    logins: [ubuntu]
+    node_labels:
+      "*": "*"
+    kubernetes_labels:
+      "*": "*"
+    kubernetes_groups: [system:masters]
+---
+kind: role
+version: v7
+metadata:
+  name: lab-developer
+spec:
+  allow:
+    # This account exists only on jump-01 and has no sudo membership.
+    logins: [dev-user]
+    node_labels:
+      teleport.dev/role: jump

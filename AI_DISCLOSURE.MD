@@ -13,8 +13,12 @@
 | Filename | Section | Content |
 | :------- | :-----: | :------ |
 | ./site/ | data | Generated the HTML + recipe |
-| ./ansible/roles/kubeadm_control/tasks/main.yml | Cilium configs | Used claude to walk through the failing Cilium install. I wanted to make sure there werent dangling iptables so it was started without kube-proxy. |
-| ./rbac/make-user.sh | - | Used to bundle a set of commands used to generate short lived creds and sign them with the cluster. Packaged for portablility |
+| ./ansible/roles/kubeadm_control/tasks/main.yml | Cilium configs | Used claude to walk through the failing Cilium install. I wanted to make sure there werent dangling iptables so it was started without kube-proxy. Ran into issues with the the LB failing to start which required manual intervention. Current/new deployments does not have this issue |
+| ./rbac/make-user.sh | - | Used to bundle a set of commands used to generate short lived creds and sign them with the cluster. Packaged for portablility. Will likely move to an ansible task. |
+| ./docs/architecture/* | Mapping | Asked to build off of my crude arrow block in ASCII, I think it did a good-ish job. |
+| ./docs/runbook.md | Validated based on deployment | I had missed a few steps, the agent corrected the make instructions. |
+| README.MD | Formatting | Updated the formatting and linked to runbook. |
+| ./terraform-proxmox | Moved and renamed files | Started with proxmox, moved to libvirt, had the agent move so deployments are consistently in a terraform-{platform} format. |
 
 ---
 ## Usage

@@ -1,9 +1,5 @@
 # Kubernetes Deployment Lab - Teleport
-## Deployment details
-
-
-
----
+ 
 ## Overview
 
 Lab has been built with two different terraform configurations. One with Proxmox as the base, and the other using libvirt as the base.
@@ -20,7 +16,29 @@ Flux was chosen due to its simplicity. I have used it before with other projects
 
 There is a verify.yaml file in the ansible directory that will run validation of all of the requirements.
 
----
+## Deployment quick start
+
+Use `terraform-proxmox`, `terraform-libvirt`, or `terraform-gcp` as `TF_DIR`.
+Copy that directory's `terraform.tfvars.example`, configure the provider and
+Ansible values in ansible/group_vars/all.yaml, then run:
+
+```bash
+make init TF_DIR=terraform-proxmox
+make plan TF_DIR=terraform-proxmox
+make apply TF_DIR=terraform-proxmox
+make cluster
+make rbac
+make user
+```
+
+The full provider, DNS, GitOps, Teleport, and verification procedure is in
+[docs/runbook.md](docs/runbook.md).
+
+## Architecture maps
+
+- [Libvirt network map](docs/architecture/libvirt-network.md)
+- [Proxmox network map](docs/architecture/proxmox-network.md)
+
 ## Versioning
 ### Host and Config
 - Ubuntu Server - 26.04

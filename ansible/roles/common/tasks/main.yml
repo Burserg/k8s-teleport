@@ -57,6 +57,15 @@
     update_cache: true
     cache_valid_time: 3600
 
+- name: Create the non-privileged Teleport developer login on the jump host
+  ansible.builtin.user:
+    name: dev-user
+    comment: Teleport developer login
+    shell: /bin/bash
+    create_home: true
+    password_lock: true
+  when: inventory_hostname in (groups['jump'] | default([]))
+
 - name: Install qemu-guest-agent for KVM guests
   ansible.builtin.apt:
     name: qemu-guest-agent

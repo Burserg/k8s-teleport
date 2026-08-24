@@ -1,0 +1,65 @@
+# ============================================================
+# The only Terraform file you should need to edit.
+# Run `qm config <your-template-vmid>` first and match the template block.
+# ============================================================
+
+proxmox_endpoint     = "https://pve.example.lan:8006/api2/json"
+
+# Can be defined here but better to be exported.
+proxmox_api_token    = "terraform@pve!terraform"
+proxmox_api_secret   = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+
+proxmox_tls_insecure = true # set false when the Proxmox API certificate is trusted
+target_node          = "pve"
+
+# --- template: verify every line against `qm config` ---
+template_name         = "ubuntu-2604-cloudinit"
+storage               = "local-lvm"
+machine               = "q35"
+bios                  = "seabios" # use "ovmf" only when the template is UEFI
+efi_pre_enrolled_keys = false     # only read when bios = "ovmf"
+scsihw                = "virtio-scsi-single"
+cloudinit_slot        = "ide2"  # the slot with media=cdrom,*-cloudinit
+os_disk_slot          = "scsi0" # the slot with the real disk
+disk_size             = "32G"
+qemu_agent            = 0
+serial_console        = true
+disk_discard          = true
+disk_iothread         = true
+cpu_type              = "host"
+
+# --- network ---
+network_bridge = "vmbr0"
+vlan_tag       = 0 # 0 = untagged
+subnet_prefix  = 24
+gateway        = "192.168.1.1"
+nameserver     = "192.168.1.1"
+searchdomain   = "lab.local"
+
+# Optional second management network. It is needed only when the cluster VLAN
+# is not routable from the Ansible machine. Set mgmt_ip and proxy_jump on the
+# jump node below when using it.
+# mgmt_network_bridge = "vmbr1"
+# mgmt_vlan_tag       = 0
+# mgmt_subnet_prefix  = 24
+# mgmt_gateway        = "192.168.100.1"
+# mgmt_nameserver     = "192.168.100.1"
+
+# --- identity ---
+ci_user = "ubuntu"
+admin_ssh_public_keys = [
+  "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA... you@workstation",
+]
+
+# --- nodes: set ip = null for DHCP (needs qemu_agent = 1) ---
+nodes = {
+  "ctrl-01" = { vmid = 3001, ip = "192.168.1.11", cores = 2, memory = 4096, role = "control" }
+  "wrkr-01" = { vmid = 3002, ip = "192.168.1.21", cores = 4, memory = 8192, role = "worker" }
+  "wrkr-02" = { vmid = 3003, ip = "192.168.1.22", cores = 4, memory = 8192, role = "worker" }
+
+  # Example for an isolated cluster VLAN:
+  # "jump-01" = {
+  #   vmid = 3000, ip = "192.168.1.10", mgmt_ip = "192.168.100.10",
+  #   proxy_jump = true, cores = 2, memory = 4096, role = "jump"
+  # }
+}

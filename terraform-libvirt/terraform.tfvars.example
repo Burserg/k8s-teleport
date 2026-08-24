@@ -1,0 +1,29 @@
+# Copy to terraform.tfvars and replace every example value.
+# Use qemu:///system when OpenTofu runs on the libvirt host itself.
+libvirt_uri = "qemu+ssh://libvirt@hypervisor.example.lan/system?keyfile=/absolute/path/to/id_ed25519&known_hosts_verify=ignore"
+
+pool         = "default"
+disk_size_gb = 60
+machine      = "q35"
+cpu_mode     = "host-passthrough"
+# uefi_firmware = "/usr/share/edk2/x64/OVMF_CODE.4m.fd"
+
+# This must be a host bridge connected to the cluster VLAN, not libvirt NAT
+# (virbr0). For a tagged network, create the bridge on a host VLAN interface.
+network_bridge = "br-vlan2"
+subnet_prefix  = 24
+gateway        = "192.168.2.1"
+nameserver     = "192.168.2.1"
+searchdomain   = "lab.local"
+
+ci_user = "ubuntu"
+admin_ssh_public_keys = [
+  "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA... admin@workstation",
+]
+
+nodes = {
+  "jump-01" = { ip = "192.168.2.20", cores = 1, memory = 4096, role = "jump", disk_size_gb = 20 }
+  "ctrl-01" = { ip = "192.168.2.21", cores = 4, memory = 8192, role = "control" }
+  "wrkr-01" = { ip = "192.168.2.31", cores = 4, memory = 8192, role = "worker" }
+  "wrkr-02" = { ip = "192.168.2.32", cores = 4, memory = 8192, role = "worker" }
+}

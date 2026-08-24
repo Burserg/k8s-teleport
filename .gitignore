@@ -12,3 +12,5 @@ ansible/inventory/hosts.ini
 *.key
 *.csr
 *.crt
+*transcript.md
+localdeploy/

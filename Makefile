@@ -1,9 +1,9 @@
 .PHONY: help init plan apply cluster rbac user deploy reconcile verify destroy lint
 
-TF_DIR ?= terraform
+TF_DIR ?= terraform-proxmox
 
 help:
-	@echo "make init      - OpenTofu init + ansible collections (TF_DIR=terraform-gcp selects GCP)"
+	@echo "make init      - OpenTofu init + ansible collections (default: terraform-proxmox)"
 	@echo "make plan      - OpenTofu plan"
 	@echo "make apply     - create the VMs and write the inventory"
 	@echo "make cluster   - preflight + full cluster build"
@@ -18,6 +18,11 @@ help:
 USER := alice
 GROUP := app-devs
 KUBECONFIG_ADMIN ?= rbac/out/admin/admin.kubeconfig
+# Override the API endpoint for a local SSH tunnel or another reachable route.
+# When the route hostname is not a certificate SAN, also set KUBE_TLS_SERVER_NAME.
+KUBE_API_SERVER ?=
+KUBE_TLS_SERVER_NAME ?=
+KUBECTL_SERVER = $(if $(KUBE_API_SERVER),--server=$(KUBE_API_SERVER)) $(if $(KUBE_TLS_SERVER_NAME),--tls-server-name=$(KUBE_TLS_SERVER_NAME))
 
 init:
 	cd $(TF_DIR) && tofu init
@@ -33,27 +38,27 @@ cluster:
 	cd ansible && ansible-playbook preflight.yml && ansible-playbook site.yml
 
 rbac:
-	KUBECONFIG=$(KUBECONFIG_ADMIN) kubectl apply -f rbac/00-tenant-rbac.yaml \
+	KUBECONFIG=$(KUBECONFIG_ADMIN) kubectl $(KUBECTL_SERVER) apply -f rbac/00-tenant-rbac.yaml \
 	              -f rbac/10-flux-tenant.yaml \
 	              -f rbac/20-network-policy.yaml \
 	              -f gitops/cluster/lab/tenant.yml
 
 user:
-	KUBECONFIG=$(KUBECONFIG_ADMIN) ./rbac/make-user.sh $(USER) $(GROUP)
+	cd ansible && ansible-playbook issue-user.yml -e "rbac_user=$(USER) rbac_group=$(GROUP)" $(if $(KUBE_API_SERVER),-e "rbac_api_server=$(KUBE_API_SERVER)") $(if $(KUBE_TLS_SERVER_NAME),-e "rbac_tls_server_name=$(KUBE_TLS_SERVER_NAME)")
 
 deploy:
-	KUBECONFIG=rbac/out/$(USER)/$(USER).kubeconfig kubectl apply -k gitops/apps/cheesecake/
+	KUBECONFIG=rbac/out/$(USER)/$(USER).kubeconfig kubectl $(KUBECTL_SERVER) apply -k gitops/apps/cheesecake/
 
 reconcile:
-	KUBECONFIG=$(KUBECONFIG_ADMIN) kubectl -n cheesecake annotate gitrepository cheesecake-app reconcile.fluxcd.io/requestedAt="$$(date -u +%Y-%m-%dT%H:%M:%SZ)" --overwrite
-	KUBECONFIG=$(KUBECONFIG_ADMIN) kubectl -n cheesecake annotate kustomization cheesecake-app reconcile.fluxcd.io/requestedAt="$$(date -u +%Y-%m-%dT%H:%M:%SZ)" --overwrite
+	KUBECONFIG=$(KUBECONFIG_ADMIN) kubectl $(KUBECTL_SERVER) -n cheesecake annotate gitrepository cheesecake-app reconcile.fluxcd.io/requestedAt="$$(date -u +%Y-%m-%dT%H:%M:%SZ)" --overwrite
+	KUBECONFIG=$(KUBECONFIG_ADMIN) kubectl $(KUBECTL_SERVER) -n cheesecake annotate kustomization cheesecake-app reconcile.fluxcd.io/requestedAt="$$(date -u +%Y-%m-%dT%H:%M:%SZ)" --overwrite
 
 verify:
 	cd ansible && ansible-playbook verify.yml
 
 lint:
 	cd $(TF_DIR) && tofu fmt -check -recursive && tofu validate
-	cd ansible && ansible-lint site.yml preflight.yml verify.yml
+	cd ansible && ansible-lint site.yml preflight.yml verify.yml issue-user.yml
 
 destroy:
 	cd $(TF_DIR) && tofu destroy

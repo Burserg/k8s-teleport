@@ -1,0 +1,5 @@
+---
+# The libvirt deployment has its own public Teleport endpoint. Keep the shared
+# default in all.yml for the Proxmox deployment and any inventory without this
+# group.
+teleport_cluster_name: "teleporthome.devbycory.com"

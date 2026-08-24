@@ -1,20 +1,19 @@
-# Hand-write this file, or let terraform/ generate it.
+# Hand-write this file, or let terraform-proxmox/ generate it.
 #
 # Any Linux hosts work
 #   ansible_host  how THIS machine reaches the node
 #   cluster_ip    the address Kubernetes binds to
 
-# Optional. Hosts Ansible. Delete this group fi managing locally
-# falls back to running the controller role on ctrl-01.
+# Optional Ansible control host. Delete this group when managing the cluster directly.
 [jump]
-jump-01 ansible_host=192.168.2.10 cluster_ip=192.168.2.10
+jump-01 ansible_host=192.168.1.10 cluster_ip=192.168.1.10
 
 [control]
-ctrl-01 ansible_host=192.168.2.11 cluster_ip=192.168.2.11
+ctrl-01 ansible_host=192.168.1.11 cluster_ip=192.168.1.11
 
 [workers]
-wrkr-01 ansible_host=192.168.2.21 cluster_ip=192.168.2.21
-wrkr-02 ansible_host=192.168.2.22 cluster_ip=192.168.2.22
+wrkr-01 ansible_host=192.168.1.21 cluster_ip=192.168.1.21
+wrkr-02 ansible_host=192.168.1.22 cluster_ip=192.168.1.22
 
 # Kubernetes nodes.
 [lab:children]
@@ -31,7 +30,7 @@ jump
 ansible_user=ubuntu
 ansible_ssh_private_key_file=~/.ssh/id_ed25519
 
-# If the cluster VLAN is not routable from this machine
-# uncomment to proxy through the specified host.
+# If the cluster VLAN is not routable from this machine, uncomment this block
+# to reach Kubernetes nodes through the jump host above.
 # [lab:vars]
-# ansible_ssh_common_args='-o ProxyJump=ubuntu@192.168.2.10 -o StrictHostKeyChecking=accept-new'
+# ansible_ssh_common_args='-o ProxyJump=ubuntu@192.168.1.10 -o StrictHostKeyChecking=accept-new'
